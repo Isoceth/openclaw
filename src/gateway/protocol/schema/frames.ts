@@ -31,6 +31,7 @@ export const ConnectParamsSchema = Type.Object(
         modelIdentifier: Type.Optional(NonEmptyString),
         mode: GatewayClientModeSchema,
         instanceId: Type.Optional(NonEmptyString),
+        workspaceId: Type.Optional(NonEmptyString),
       },
       { additionalProperties: false },
     ),
