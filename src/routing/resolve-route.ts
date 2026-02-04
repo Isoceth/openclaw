@@ -26,6 +26,7 @@ export type ResolveAgentRouteInput = {
   parentPeer?: RoutePeer | null;
   guildId?: string | null;
   teamId?: string | null;
+  workspaceId?: string | null;
 };
 
 export type ResolvedAgentRoute = {
@@ -42,6 +43,7 @@ export type ResolvedAgentRoute = {
     | "binding.peer.parent"
     | "binding.guild"
     | "binding.team"
+    | "binding.workspace"
     | "binding.account"
     | "binding.channel"
     | "default";
@@ -164,12 +166,24 @@ function matchesTeam(match: { teamId?: string | undefined } | undefined, teamId:
   return id === teamId;
 }
 
+function matchesWorkspace(
+  match: { workspaceId?: string | undefined } | undefined,
+  workspaceId: string,
+): boolean {
+  const id = normalizeId(match?.workspaceId);
+  if (!id) {
+    return false;
+  }
+  return id === workspaceId;
+}
+
 export function resolveAgentRoute(input: ResolveAgentRouteInput): ResolvedAgentRoute {
   const channel = normalizeToken(input.channel);
   const accountId = normalizeAccountId(input.accountId);
   const peer = input.peer ? { kind: input.peer.kind, id: normalizeId(input.peer.id) } : null;
   const guildId = normalizeId(input.guildId);
   const teamId = normalizeId(input.teamId);
+  const workspaceId = normalizeId(input.workspaceId);
 
   const bindings = listBindings(input.cfg).filter((binding) => {
     if (!binding || typeof binding !== "object") {
@@ -240,9 +254,20 @@ export function resolveAgentRoute(input: ResolveAgentRouteInput): ResolvedAgentR
     }
   }
 
+  if (workspaceId) {
+    const workspaceMatch = bindings.find((b) => matchesWorkspace(b.match, workspaceId));
+    if (workspaceMatch) {
+      return choose(workspaceMatch.agentId, "binding.workspace");
+    }
+  }
+
   const accountMatch = bindings.find(
     (b) =>
-      b.match?.accountId?.trim() !== "*" && !b.match?.peer && !b.match?.guildId && !b.match?.teamId,
+      b.match?.accountId?.trim() !== "*" &&
+      !b.match?.peer &&
+      !b.match?.guildId &&
+      !b.match?.teamId &&
+      !b.match?.workspaceId,
   );
   if (accountMatch) {
     return choose(accountMatch.agentId, "binding.account");
@@ -250,7 +275,11 @@ export function resolveAgentRoute(input: ResolveAgentRouteInput): ResolvedAgentR
 
   const anyAccountMatch = bindings.find(
     (b) =>
-      b.match?.accountId?.trim() === "*" && !b.match?.peer && !b.match?.guildId && !b.match?.teamId,
+      b.match?.accountId?.trim() === "*" &&
+      !b.match?.peer &&
+      !b.match?.guildId &&
+      !b.match?.teamId &&
+      !b.match?.workspaceId,
   );
   if (anyAccountMatch) {
     return choose(anyAccountMatch.agentId, "binding.channel");
