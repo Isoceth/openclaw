@@ -16,6 +16,7 @@ export const BindingsSchema = z
     z
       .object({
         agentId: z.string(),
+        label: z.string().optional(),
         match: z
           .object({
             channel: z.string(),
@@ -29,6 +30,11 @@ export const BindingsSchema = z
               .optional(),
             guildId: z.string().optional(),
             teamId: z.string().optional(),
+            workspaceId: z
+              .string()
+              .regex(/^[a-z0-9-]+$/)
+              .max(64)
+              .optional(),
           })
           .strict(),
       })

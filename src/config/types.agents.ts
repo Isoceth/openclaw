@@ -71,11 +71,13 @@ export type AgentsConfig = {
 
 export type AgentBinding = {
   agentId: string;
+  label?: string;
   match: {
     channel: string;
     accountId?: string;
     peer?: { kind: "dm" | "group" | "channel"; id: string };
     guildId?: string;
     teamId?: string;
+    workspaceId?: string;
   };
 };
