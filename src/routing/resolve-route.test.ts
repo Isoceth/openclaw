@@ -409,3 +409,101 @@ describe("parentPeer binding inheritance (thread support)", () => {
     expect(route.matchedBy).toBe("default");
   });
 });
+
+describe("workspace binding (webchat)", () => {
+  test("workspace binding wins over account binding when peer not bound", () => {
+    const cfg: OpenClawConfig = {
+      bindings: [
+        {
+          agentId: "workspace-agent",
+          match: {
+            channel: "webchat",
+            workspaceId: "acme-corp",
+          },
+        },
+        {
+          agentId: "acct-agent",
+          match: { channel: "webchat", accountId: "default" },
+        },
+      ],
+    };
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "webchat",
+      accountId: "default",
+      workspaceId: "acme-corp",
+    });
+    expect(route.agentId).toBe("workspace-agent");
+    expect(route.matchedBy).toBe("binding.workspace");
+  });
+
+  test("team binding wins over workspace binding (priority order)", () => {
+    const cfg: OpenClawConfig = {
+      bindings: [
+        {
+          agentId: "team-agent",
+          match: {
+            channel: "slack",
+            teamId: "T123",
+          },
+        },
+        {
+          agentId: "workspace-agent",
+          match: {
+            channel: "slack",
+            workspaceId: "acme-corp",
+          },
+        },
+      ],
+    };
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "slack",
+      teamId: "T123",
+      workspaceId: "acme-corp",
+    });
+    expect(route.agentId).toBe("team-agent");
+    expect(route.matchedBy).toBe("binding.team");
+  });
+
+  test("unknown workspace falls back to default agent", () => {
+    const cfg: OpenClawConfig = {
+      bindings: [
+        {
+          agentId: "workspace-agent",
+          match: {
+            channel: "webchat",
+            workspaceId: "acme-corp",
+          },
+        },
+      ],
+    };
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "webchat",
+      workspaceId: "unknown-workspace",
+    });
+    expect(route.agentId).toBe("main");
+    expect(route.matchedBy).toBe("default");
+  });
+
+  test("missing workspaceId routes to default agent", () => {
+    const cfg: OpenClawConfig = {
+      bindings: [
+        {
+          agentId: "workspace-agent",
+          match: {
+            channel: "webchat",
+            workspaceId: "acme-corp",
+          },
+        },
+      ],
+    };
+    const route = resolveAgentRoute({
+      cfg,
+      channel: "webchat",
+    });
+    expect(route.agentId).toBe("main");
+    expect(route.matchedBy).toBe("default");
+  });
+});
