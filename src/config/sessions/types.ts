@@ -85,6 +85,8 @@ export type SessionEntry = {
   subject?: string;
   groupChannel?: string;
   space?: string;
+  workspaceId?: string;
+  workspaceName?: string;
   origin?: SessionOrigin;
   deliveryContext?: DeliveryContext;
   lastChannel?: SessionChannelId;

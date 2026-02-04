@@ -614,8 +614,13 @@ export function listSessionsFromStore(params: {
       const id = parsed?.id;
       const origin = entry?.origin;
       const originLabel = origin?.label;
+      const workspaceName = entry?.workspaceName?.trim();
+      const workspaceId = entry?.workspaceId?.trim();
       const displayName =
         entry?.displayName ??
+        (channel === "webchat" && (workspaceName || workspaceId)
+          ? workspaceName || workspaceId
+          : undefined) ??
         (channel
           ? buildGroupDisplayName({
               provider: channel,
