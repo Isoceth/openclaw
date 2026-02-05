@@ -129,6 +129,16 @@ export type MsgContext = {
    * Used for hook confirmation messages like "Session context saved to memory".
    */
   HookMessages?: string[];
+  /**
+   * Webchat workspace identifier for multi-tenant routing.
+   * Used to resolve agent bindings and populate session metadata.
+   */
+  WorkspaceId?: string;
+  /**
+   * Human-readable workspace name (from binding label or fallback).
+   * Displayed in session lists to identify the webchat origin.
+   */
+  WorkspaceName?: string;
 };
 
 export type FinalizedMsgContext = Omit<MsgContext, "CommandAuthorized"> & {

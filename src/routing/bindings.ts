@@ -118,3 +118,40 @@ export function resolvePreferredAccountId(params: {
   }
   return params.defaultAccountId;
 }
+
+/**
+ * Look up the binding label for a webchat workspace.
+ * Returns the human-readable label from the binding config, or undefined if not found.
+ */
+export function resolveWebchatWorkspaceLabel(
+  cfg: OpenClawConfig,
+  workspaceId: string | undefined | null,
+): string | undefined {
+  if (!workspaceId) {
+    return undefined;
+  }
+  const normalizedWorkspaceId = workspaceId.trim();
+  if (!normalizedWorkspaceId) {
+    return undefined;
+  }
+  for (const binding of listBindings(cfg)) {
+    if (!binding || typeof binding !== "object") {
+      continue;
+    }
+    const match = binding.match;
+    if (!match || typeof match !== "object") {
+      continue;
+    }
+    const channel = normalizeBindingChannelId(match.channel);
+    if (channel !== "webchat") {
+      continue;
+    }
+    const bindingWorkspaceId = match.workspaceId?.trim();
+    if (!bindingWorkspaceId || bindingWorkspaceId !== normalizedWorkspaceId) {
+      continue;
+    }
+    // Found matching binding, return the label if present
+    return binding.label?.trim() || undefined;
+  }
+  return undefined;
+}

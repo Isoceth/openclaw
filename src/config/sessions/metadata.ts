@@ -158,7 +158,12 @@ export function deriveSessionMetaPatch(params: {
 }): Partial<SessionEntry> | null {
   const groupPatch = deriveGroupSessionPatch(params);
   const origin = deriveSessionOrigin(params.ctx);
-  if (!groupPatch && !origin) {
+
+  // Extract webchat workspace metadata from context
+  const workspaceId = params.ctx.WorkspaceId?.trim();
+  const workspaceName = params.ctx.WorkspaceName?.trim();
+
+  if (!groupPatch && !origin && !workspaceId && !workspaceName) {
     return null;
   }
 
@@ -166,6 +171,14 @@ export function deriveSessionMetaPatch(params: {
   const mergedOrigin = mergeOrigin(params.existing?.origin, origin);
   if (mergedOrigin) {
     patch.origin = mergedOrigin;
+  }
+
+  // Populate webchat workspace fields
+  if (workspaceId) {
+    patch.workspaceId = workspaceId;
+  }
+  if (workspaceName) {
+    patch.workspaceName = workspaceName;
   }
 
   return Object.keys(patch).length > 0 ? patch : null;

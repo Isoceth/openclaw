@@ -10,6 +10,7 @@ import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
+import { resolveWebchatWorkspaceLabel } from "../../routing/bindings.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import {
@@ -453,6 +454,14 @@ export const chatHandlers: GatewayRequestHandlers = {
       // See: https://github.com/moltbot/moltbot/issues/3658
       const stampedMessage = injectTimestamp(parsedMessage, timestampOptsFromConfig(cfg));
 
+      // Extract webchat workspace metadata from client connection.
+      // The workspaceId comes from the browser client's connect params, and we look up
+      // the human-readable label from the binding configuration.
+      const workspaceId = clientInfo?.workspaceId?.trim();
+      const workspaceName = workspaceId
+        ? (resolveWebchatWorkspaceLabel(cfg, workspaceId) ?? workspaceId)
+        : undefined;
+
       const ctx: MsgContext = {
         Body: parsedMessage,
         BodyForAgent: stampedMessage,
@@ -470,6 +479,8 @@ export const chatHandlers: GatewayRequestHandlers = {
         SenderName: clientInfo?.displayName,
         SenderUsername: clientInfo?.displayName,
         GatewayClientScopes: client?.connect?.scopes,
+        WorkspaceId: workspaceId,
+        WorkspaceName: workspaceName,
       };
 
       const agentId = resolveSessionAgentId({
