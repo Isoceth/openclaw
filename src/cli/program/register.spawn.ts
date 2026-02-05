@@ -13,6 +13,7 @@ export function registerSpawnCommand(program: Command) {
     .option("-m, --message <text>", "Task message (alternative to positional argument)")
     .option("-a, --agent <id>", "Agent to spawn (default: default agent)")
     .option("--deliver", "Send result to agent's chat channel instead of terminal", false)
+    .option("--async", "Don't wait for completion; return immediately after spawning", false)
     .option("--model <model>", "Override model (provider/model format)")
     .option("--thinking <level>", "Override thinking level: off | minimal | low | medium | high")
     .option("--timeout <seconds>", "Run timeout in seconds (default 600 or config value)")
@@ -26,6 +27,7 @@ ${formatHelpExamples([
   ['openclaw spawn "Check system status"', "Spawn a subagent with a simple task."],
   ['openclaw spawn --message "Analyze logs" --agent ops', "Use a specific agent."],
   ['openclaw spawn "Generate report" --deliver', "Send result to agent's chat channel."],
+  ['openclaw spawn "Background task" --async', "Fire and forget; don't wait for result."],
   [
     'openclaw spawn "Summarize data" --model anthropic/claude-sonnet-4-5 --thinking high',
     "Override model and thinking level.",
@@ -44,6 +46,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/spawn", "docs.openclaw.ai/cli/spa
             message: opts.message as string | undefined,
             agent: opts.agent as string | undefined,
             deliver: Boolean(opts.deliver),
+            async: Boolean(opts.async),
             model: opts.model as string | undefined,
             thinking: opts.thinking as string | undefined,
             timeout: opts.timeout as string | undefined,

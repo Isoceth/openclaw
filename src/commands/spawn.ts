@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import path from "node:path";
+import type { SessionEntry } from "../config/sessions/types.js";
 import type { RuntimeEnv } from "../runtime.js";
 import {
   listAgentIds,
@@ -11,7 +13,7 @@ import { buildSubagentSystemPrompt } from "../agents/subagent-announce.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
 import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinking.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { loadConfig } from "../config/config.js";
+import { loadConfig, type OpenClawConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store.js";
@@ -25,6 +27,7 @@ export type SpawnCliOpts = {
   message?: string;
   agent?: string;
   deliver?: boolean;
+  async?: boolean;
   model?: string;
   thinking?: string;
   timeout?: string;
@@ -269,12 +272,154 @@ async function waitForSpawnCompletion(params: {
  * buildTranscriptPath resolves the transcript path for a given session key.
  * Session key format: agent:${agentId}:spawn:${sessionId}
  */
-function buildTranscriptPath(sessionKey: string, cfg: ReturnType<typeof loadConfig>): string {
+function buildTranscriptPath(sessionKey: string, cfg: OpenClawConfig): string {
   const parts = sessionKey.split(":");
   const agentId = parts[1] || "default";
   const sessionId = parts[parts.length - 1];
   const agentDir = resolveAgentDir(cfg, agentId);
   return `${agentDir}/sessions/${sessionId}.jsonl`;
+}
+
+// Stats formatting helpers (mirroring subagent-announce.ts formatting).
+function formatDurationShort(valueMs?: number) {
+  if (!valueMs || !Number.isFinite(valueMs) || valueMs <= 0) {
+    return undefined;
+  }
+  const totalSeconds = Math.round(valueMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function formatTokenCount(value?: number) {
+  if (!value || !Number.isFinite(value)) {
+    return "0";
+  }
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}m`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}k`;
+  }
+  return String(Math.round(value));
+}
+
+function formatUsd(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+  if (value >= 1) {
+    return `$${value.toFixed(2)}`;
+  }
+  if (value >= 0.01) {
+    return `$${value.toFixed(2)}`;
+  }
+  return `$${value.toFixed(4)}`;
+}
+
+function resolveModelCost(params: { provider?: string; model?: string; config: OpenClawConfig }):
+  | {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+    }
+  | undefined {
+  const provider = params.provider?.trim();
+  const model = params.model?.trim();
+  if (!provider || !model) {
+    return undefined;
+  }
+  const models = params.config.models?.providers?.[provider]?.models ?? [];
+  const entry = models.find((candidate) => candidate.id === model);
+  return entry?.cost;
+}
+
+/**
+ * Builds a stats line similar to subagent announce format.
+ */
+async function buildSpawnStatsLine(params: {
+  sessionKey: string;
+  cfg: OpenClawConfig;
+  startedAt?: number;
+  endedAt?: number;
+}): Promise<string> {
+  const { sessionKey, cfg, startedAt, endedAt } = params;
+
+  // Load session entry to get token stats.
+  const keyParts = sessionKey.split(":");
+  const agentId = keyParts[1] || "default";
+  const storePath = resolveStorePath(cfg.session?.store, { agentId });
+
+  // Allow a brief delay for token counts to be written.
+  let entry: SessionEntry | undefined;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const store = loadSessionStore(storePath);
+    entry = store[sessionKey];
+    if (
+      entry &&
+      (typeof entry.totalTokens === "number" ||
+        typeof entry.inputTokens === "number" ||
+        typeof entry.outputTokens === "number")
+    ) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  const sessionId = entry?.sessionId;
+  const transcriptPath =
+    sessionId && storePath ? path.join(path.dirname(storePath), `${sessionId}.jsonl`) : undefined;
+
+  const input = entry?.inputTokens;
+  const output = entry?.outputTokens;
+  const total =
+    entry?.totalTokens ??
+    (typeof input === "number" && typeof output === "number" ? input + output : undefined);
+  const runtimeMs =
+    typeof startedAt === "number" && typeof endedAt === "number"
+      ? Math.max(0, endedAt - startedAt)
+      : undefined;
+
+  const provider = entry?.modelProvider;
+  const model = entry?.model;
+  const costConfig = resolveModelCost({ provider, model, config: cfg });
+  const cost =
+    costConfig && typeof input === "number" && typeof output === "number"
+      ? (input * costConfig.input + output * costConfig.output) / 1_000_000
+      : undefined;
+
+  const parts: string[] = [];
+  const runtime = formatDurationShort(runtimeMs);
+  parts.push(`runtime ${runtime ?? "n/a"}`);
+  if (typeof total === "number") {
+    const inputText = typeof input === "number" ? formatTokenCount(input) : "n/a";
+    const outputText = typeof output === "number" ? formatTokenCount(output) : "n/a";
+    const totalText = formatTokenCount(total);
+    parts.push(`tokens ${totalText} (in ${inputText} / out ${outputText})`);
+  } else {
+    parts.push("tokens n/a");
+  }
+  const costText = formatUsd(cost);
+  if (costText) {
+    parts.push(`est ${costText}`);
+  }
+  parts.push(`sessionKey ${sessionKey}`);
+  if (sessionId) {
+    parts.push(`sessionId ${sessionId}`);
+  }
+  if (transcriptPath) {
+    parts.push(`transcript ${transcriptPath}`);
+  }
+
+  return `Stats: ${parts.join(" \u2022 ")}`;
 }
 
 /**
@@ -339,6 +484,8 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
     // without session key or transcript path for debugging/recovery. User
     // should know where to find partial results even when spawn/wait fail.
     // ---
+    const startedAt = Date.now();
+
     // Spawn the subagent via gateway.
     const { runId, sessionKey } = await spawnViaGateway({
       agentId,
@@ -348,14 +495,30 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
       timeout: timeoutOverrideSeconds,
     });
 
+    // Handle --async mode: return immediately without waiting for completion.
+    if (opts.async) {
+      if (opts.json) {
+        const output = {
+          status: "spawned",
+          sessionKey,
+          runId,
+        };
+        runtime.log(JSON.stringify(output, null, 2));
+      } else {
+        runtime.log(`Spawned: ${sessionKey}`);
+      }
+      return {};
+    }
+
     // Wait for the subagent to complete and retrieve the result.
     const result = await waitForSpawnCompletion({
       runId,
       sessionKey,
       timeoutMs,
     });
+    const endedAt = Date.now();
 
-    // Handle --deliver mode: send result to agent's chat channel instead of terminal.
+    // Handle --deliver mode: send result to agent's chat channel.
     if (opts.deliver) {
       // Resolve the agent's main session key to determine where to deliver.
       const mainSessionKey = resolveAgentMainSessionKey({
@@ -384,8 +547,37 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
         );
       }
 
-      // Prepare the message to deliver.
-      const messageToDeliver = result.response || "(no output)";
+      // Build announce-style message with stats.
+      const statusLabel =
+        result.status === "ok"
+          ? "completed successfully"
+          : result.status === "timeout"
+            ? "timed out"
+            : result.status === "error"
+              ? `failed: ${result.error || "unknown error"}`
+              : "finished with unknown status";
+      const responseText = result.response || "(no output)";
+      const statsLine = await buildSpawnStatsLine({
+        sessionKey,
+        cfg,
+        startedAt,
+        endedAt,
+      });
+
+      // Build the message in announce format for the main agent to process.
+      const taskLabel = taskBody.length > 50 ? `${taskBody.slice(0, 47)}...` : taskBody;
+      const messageToDeliver = [
+        `A background task "${taskLabel}" just ${statusLabel}.`,
+        "",
+        "Findings:",
+        responseText,
+        "",
+        statsLine,
+        "",
+        "Summarize this naturally for the user. Keep it brief (1-2 sentences). Flow it into the conversation naturally.",
+        "Do not mention technical details like tokens, stats, or that this was a background task.",
+        "You can respond with NO_REPLY if no announcement is needed (e.g., internal task with no user-facing result).",
+      ].join("\n");
 
       // TODO Handle delivery RPC failure
       // tags: error-handling, review:branch-feature-spawn-command
@@ -414,11 +606,28 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
         timeoutMs: 60_000,
       });
 
-      // Show confirmation message in terminal.
+      // Show confirmation and output in terminal (always show output, not just "Delivered").
       const channelLabel = deliveryContext?.channel
         ? `${deliveryContext.channel}${deliveryContext.to ? ` (${deliveryContext.to})` : ""}`
         : "agent's chat channel";
-      runtime.log(`Delivered to ${channelLabel}`);
+
+      if (opts.json) {
+        const output = {
+          status: result.status === "ok" ? "success" : result.status,
+          response: result.response || "",
+          sessionKey,
+          delivered: true,
+          deliveredTo: channelLabel,
+        };
+        runtime.log(JSON.stringify(output, null, 2));
+      } else {
+        // Show the response in terminal even when delivering.
+        if (result.response) {
+          runtime.log(result.response);
+          runtime.log("");
+        }
+        runtime.log(`Delivered to ${channelLabel}`);
+      }
       return {};
     }
 
