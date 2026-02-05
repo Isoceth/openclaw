@@ -4,7 +4,11 @@ import { requireActivePluginRegistry } from "../plugins/runtime.js";
 
 // Channel docking: add new core channels here (order + meta + aliases), then
 // register the plugin in its extension entrypoint and keep protocol IDs in sync.
-export const CHAT_CHANNEL_ORDER = [
+//
+// IMPORTANT: DELIVERABLE_CHANNEL_ORDER contains channels that support outbound delivery.
+// Webchat is NOT deliverable (it's INTERNAL_MESSAGE_CHANNEL) but is included in
+// CHAT_CHANNEL_ORDER for UI ordering and metadata lookup.
+export const DELIVERABLE_CHANNEL_ORDER = [
   "telegram",
   "whatsapp",
   "discord",
@@ -12,12 +16,17 @@ export const CHAT_CHANNEL_ORDER = [
   "slack",
   "signal",
   "imessage",
-  "webchat",
 ] as const;
 
-export type ChatChannelId = (typeof CHAT_CHANNEL_ORDER)[number];
+// All chat channels including non-deliverable ones (e.g., webchat).
+export const CHAT_CHANNEL_ORDER = [...DELIVERABLE_CHANNEL_ORDER, "webchat"] as const;
 
-export const CHANNEL_IDS = [...CHAT_CHANNEL_ORDER] as const;
+export type ChatChannelId = (typeof CHAT_CHANNEL_ORDER)[number];
+export type DeliverableChannelId = (typeof DELIVERABLE_CHANNEL_ORDER)[number];
+
+// CHANNEL_IDS is used by message-channel.ts for listDeliverableMessageChannels().
+// Webchat is excluded because it doesn't support outbound delivery.
+export const CHANNEL_IDS = [...DELIVERABLE_CHANNEL_ORDER] as const;
 
 export const DEFAULT_CHAT_CHANNEL: ChatChannelId = "whatsapp";
 
