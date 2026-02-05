@@ -1,10 +1,5 @@
 import { describe, it } from "vitest";
 
-// TODO Add tests for spawn command
-// tags: forge:spawn
-// Test input validation, agent selection, gateway integration, error handling.
-// ---
-
 describe("spawn command", () => {
   describe("input validation", () => {
     it.todo("accepts task as positional argument");
