@@ -51,6 +51,7 @@ All session state is **owned by the gateway** (the “master” OpenClaw). UI cl
 - Transcripts: `~/.openclaw/agents/<agentId>/sessions/<SessionId>.jsonl` (Telegram topic sessions use `.../<SessionId>-topic-<threadId>.jsonl`).
 - The store is a map `sessionKey -> { sessionId, updatedAt, ... }`. Deleting entries is safe; they are recreated on demand.
 - Group entries may include `displayName`, `channel`, `subject`, `room`, and `space` to label sessions in UIs.
+- WebChat entries may include `workspaceId` and `workspaceName` metadata extracted from connection parameters and binding configuration.
 - Session entries include `origin` metadata (label + routing hints) so UIs can explain where a session came from.
 - OpenClaw does **not** read legacy Pi/Tau session folders.
 
@@ -186,3 +187,12 @@ Each session entry records where it came from (best-effort) in `origin`:
   `GroupSubject`, `GroupChannel`, `GroupSpace`, and `SenderName` in the inbound
   context and calling `recordSessionMetaFromInbound` (or passing the same context
   to `updateLastRoute`).
+
+## WebChat workspace metadata
+
+WebChat sessions include workspace metadata extracted from the client connection:
+
+- `workspaceId`: workspace identifier from the client connection parameters
+- `workspaceName`: human-readable display name resolved from binding configuration labels
+
+This metadata is used for session display in dropdowns and session lists. When a WebChat connection includes a `workspaceId` parameter, the session entry stores both the raw identifier and the resolved display name from the matching binding's `label` field. If no binding defines a label, the raw `workspaceId` is displayed.

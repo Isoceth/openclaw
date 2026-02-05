@@ -763,19 +763,24 @@ Inbound messages are routed to an agent via bindings.
     - `deny`: array of denied tool names (deny wins)
 - `agents.defaults`: shared agent defaults (model, workspace, sandbox, etc.).
 - `bindings[]`: routes inbound messages to an `agentId`.
+  - `agentId` (required): target agent identifier
+  - `label` (optional): human-readable label stored in session metadata and displayed in session dropdowns (webchat workspace bindings)
   - `match.channel` (required)
   - `match.accountId` (optional; `*` = any account; omitted = default account)
   - `match.peer` (optional; `{ kind: dm|group|channel, id }`)
   - `match.guildId` / `match.teamId` (optional; channel-specific)
+  - `match.workspaceId` (optional; webchat workspace identifier, lowercase alphanumeric plus hyphens, max 64 chars; stored in session as `workspaceId`, label stored as `workspaceName`)
 
 Deterministic match order:
 
 1. `match.peer`
-2. `match.guildId`
-3. `match.teamId`
-4. `match.accountId` (exact, no peer/guild/team)
-5. `match.accountId: "*"` (channel-wide, no peer/guild/team)
-6. default agent (`agents.list[].default`, else first list entry, else `"main"`)
+2. `match.peer` (parent peer for threads — inherits binding from parent channel/group)
+3. `match.guildId`
+4. `match.teamId`
+5. `match.workspaceId`
+6. `match.accountId` (exact, no peer/guild/team/workspace)
+7. `match.accountId: "*"` (channel-wide, no peer/guild/team/workspace)
+8. default agent (`agents.list[].default`, else first list entry, else `"main"`)
 
 Within each match tier, the first matching entry in `bindings` wins.
 
@@ -3371,28 +3376,30 @@ openclaw dns setup --apply
 
 Template placeholders are expanded in `tools.media.*.models[].args` and `tools.media.models[].args` (and any future templated argument fields).
 
-| Variable           | Description                                                                     |
-| ------------------ | ------------------------------------------------------------------------------- | -------- | ------- | ---------- | ----- | ------ | -------- | ------- | ------- | --- |
-| `{{Body}}`         | Full inbound message body                                                       |
-| `{{RawBody}}`      | Raw inbound message body (no history/sender wrappers; best for command parsing) |
-| `{{BodyStripped}}` | Body with group mentions stripped (best default for agents)                     |
-| `{{From}}`         | Sender identifier (E.164 for WhatsApp; may differ per channel)                  |
-| `{{To}}`           | Destination identifier                                                          |
-| `{{MessageSid}}`   | Channel message id (when available)                                             |
-| `{{SessionId}}`    | Current session UUID                                                            |
-| `{{IsNewSession}}` | `"true"` when a new session was created                                         |
-| `{{MediaUrl}}`     | Inbound media pseudo-URL (if present)                                           |
-| `{{MediaPath}}`    | Local media path (if downloaded)                                                |
-| `{{MediaType}}`    | Media type (image/audio/document/…)                                             |
-| `{{Transcript}}`   | Audio transcript (when enabled)                                                 |
-| `{{Prompt}}`       | Resolved media prompt for CLI entries                                           |
-| `{{MaxChars}}`     | Resolved max output chars for CLI entries                                       |
-| `{{ChatType}}`     | `"direct"` or `"group"`                                                         |
-| `{{GroupSubject}}` | Group subject (best effort)                                                     |
-| `{{GroupMembers}}` | Group members preview (best effort)                                             |
-| `{{SenderName}}`   | Sender display name (best effort)                                               |
-| `{{SenderE164}}`   | Sender phone number (best effort)                                               |
-| `{{Provider}}`     | Provider hint (whatsapp                                                         | telegram | discord | googlechat | slack | signal | imessage | msteams | webchat | …)  |
+| Variable            | Description                                                                     |
+| ------------------- | ------------------------------------------------------------------------------- | -------- | ------- | ---------- | ----- | ------ | -------- | ------- | ------- | --- |
+| `{{Body}}`          | Full inbound message body                                                       |
+| `{{RawBody}}`       | Raw inbound message body (no history/sender wrappers; best for command parsing) |
+| `{{BodyStripped}}`  | Body with group mentions stripped (best default for agents)                     |
+| `{{From}}`          | Sender identifier (E.164 for WhatsApp; may differ per channel)                  |
+| `{{To}}`            | Destination identifier                                                          |
+| `{{MessageSid}}`    | Channel message id (when available)                                             |
+| `{{SessionId}}`     | Current session UUID                                                            |
+| `{{IsNewSession}}   | `"true"` when a new session was created                                         |
+| `{{MediaUrl}}`      | Inbound media pseudo-URL (if present)                                           |
+| `{{MediaPath}}`     | Local media path (if downloaded)                                                |
+| `{{MediaType}}`     | Media type (image/audio/document/…)                                             |
+| `{{Transcript}}`    | Audio transcript (when enabled)                                                 |
+| `{{Prompt}}`        | Resolved media prompt for CLI entries                                           |
+| `{{MaxChars}}`      | Resolved max output chars for CLI entries                                       |
+| `{{ChatType}}`      | `"direct"` or `"group"`                                                         |
+| `{{GroupSubject}}`  | Group subject (best effort)                                                     |
+| `{{GroupMembers}}`  | Group members preview (best effort)                                             |
+| `{{SenderName}}`    | Sender display name (best effort)                                               |
+| `{{SenderE164}}`    | Sender phone number (best effort)                                               |
+| `{{WorkspaceId}}`   | Webchat workspace identifier (multi-tenant routing, when present)               |
+| `{{WorkspaceName}}` | Webchat workspace display name (from binding label or fallback, when present)   |
+| `{{Provider}}`      | Provider hint (whatsapp                                                         | telegram | discord | googlechat | slack | signal | imessage | msteams | webchat | …)  |
 
 ## Cron (Gateway scheduler)
 

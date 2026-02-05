@@ -119,11 +119,13 @@ Notes:
 Bindings are **deterministic** and **most-specific wins**:
 
 1. `peer` match (exact DM/group/channel id)
-2. `guildId` (Discord)
-3. `teamId` (Slack)
-4. `accountId` match for a channel
-5. channel-level match (`accountId: "*"`)
-6. fallback to default agent (`agents.list[].default`, else first list entry, default: `main`)
+2. `peer.parent` match (threads inherit binding from parent channel/group when no direct match)
+3. `guildId` (Discord)
+4. `teamId` (Slack)
+5. `workspaceId` (webchat)
+6. `accountId` match for a channel
+7. channel-level match (`accountId: "*"`)
+8. fallback to default agent (`agents.list[].default`, else first list entry, default: `main`)
 
 ## Multiple accounts / phone numbers
 
@@ -236,6 +238,45 @@ Notes:
 
 - If you have multiple accounts for a channel, add `accountId` to the binding (for example `{ channel: "whatsapp", accountId: "personal" }`).
 - To route a single DM/group to Opus while keeping the rest on chat, add a `match.peer` binding for that peer; peer matches always win over channel-wide rules.
+
+## Example: webchat workspace routing
+
+Route different webchat domains or applications to different agents using `workspaceId`:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "support",
+        name: "Customer Support",
+        workspace: "~/.openclaw/workspace-support",
+      },
+      {
+        id: "internal",
+        name: "Internal Agent",
+        workspace: "~/.openclaw/workspace-internal",
+      },
+    ],
+  },
+  bindings: [
+    {
+      agentId: "support",
+      label: "Customer Support",
+      match: { channel: "webchat", workspaceId: "acme-corp" },
+    },
+    {
+      agentId: "internal",
+      label: "Internal Chat",
+      match: { channel: "webchat", workspaceId: "internal-team" },
+    },
+  ],
+}
+```
+
+The `label` field provides a human-readable display name shown in webchat session metadata. If omitted, the `workspaceId` is displayed instead.
+
+Workspace identifiers must be lowercase alphanumeric with hyphens, maximum 64 characters.
 
 ## Example: same channel, one peer to Opus
 
