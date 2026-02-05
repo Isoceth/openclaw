@@ -41,10 +41,12 @@ export function renderTab(state: AppViewState, tab: Tab) {
 
 export function renderChatControls(state: AppViewState) {
   const mainSessionKey = resolveMainSessionKey(state.hello, state.sessionsResult);
+  const agents = state.agentsList?.agents;
   const sessionOptions = resolveSessionOptions(
     state.sessionKey,
     state.sessionsResult,
     mainSessionKey,
+    agents,
   );
   const disableThinkingToggle = state.onboarding;
   const disableFocusToggle = state.onboarding;
@@ -201,22 +203,119 @@ function resolveMainSessionKey(
   return null;
 }
 
-function resolveSessionDisplayName(key: string, row?: SessionsListResult["sessions"][number]) {
+type AgentLookup = { id: string; name?: string }[];
+
+/**
+ * Parses an agent session key into its components.
+ * Format: agent:<agentId>:<rest> where rest can be:
+ * - "main" or mainKey for main sessions
+ * - "spawn:<uuid>" for CLI spawn sessions
+ * - "subagent:<uuid>" for agent-spawned subagents
+ * - "<channel>:<type>:<id>" for channel groups/direct
+ */
+function parseSessionKeyParts(key: string): {
+  agentId?: string;
+  sessionType?: "main" | "spawn" | "subagent" | "channel";
+  rest?: string;
+} | null {
+  if (!key.startsWith("agent:")) {
+    return null;
+  }
+  const parts = key.slice(6).split(":");
+  if (parts.length < 2) {
+    return null;
+  }
+  const agentId = parts[0];
+  const typeOrKey = parts[1];
+
+  if (typeOrKey === "main" || parts.length === 2) {
+    return { agentId, sessionType: "main", rest: typeOrKey };
+  }
+  if (typeOrKey === "spawn" && parts.length >= 3) {
+    return { agentId, sessionType: "spawn", rest: parts.slice(2).join(":") };
+  }
+  if (typeOrKey === "subagent" && parts.length >= 3) {
+    return { agentId, sessionType: "subagent", rest: parts.slice(2).join(":") };
+  }
+  // Channel format: agent:<agentId>:<channel>:<type>:<id>
+  return { agentId, sessionType: "channel", rest: parts.slice(1).join(":") };
+}
+
+function resolveSessionDisplayName(
+  key: string,
+  row?: SessionsListResult["sessions"][number],
+  agents?: AgentLookup,
+) {
+  // Explicit label takes priority, but don't append the full key.
   const label = row?.label?.trim();
   if (label) {
-    return `${label} (${key})`;
+    return label;
   }
+
+  // Gateway-provided displayName is next.
   const displayName = row?.displayName?.trim();
   if (displayName) {
     return displayName;
   }
+
+  // Parse and generate a friendly name for agent: prefixed keys.
+  const parsed = parseSessionKeyParts(key);
+  if (parsed) {
+    const agentEntry = agents?.find((a) => a.id === parsed.agentId);
+    // Use the configured agent name if available; never fall back to the raw ID.
+    const agentName = agentEntry?.name;
+
+    if (parsed.sessionType === "main") {
+      // For main sessions, show the agent's configured name (e.g., "Hex").
+      // Only fall back to ID if no name is configured.
+      return agentName || parsed.agentId;
+    }
+    if (parsed.sessionType === "spawn") {
+      const shortId = parsed.rest?.slice(0, 8) || "?";
+      return agentName ? `${agentName} Spawn ${shortId}` : `Spawn ${shortId}`;
+    }
+    if (parsed.sessionType === "subagent") {
+      const shortId = parsed.rest?.slice(0, 8) || "?";
+      return agentName ? `${agentName} Subagent ${shortId}` : `Subagent ${shortId}`;
+    }
+    // Channel sessions: leave as-is for now, the channel name should come from displayName.
+  }
+
+  // Fallback to the raw key.
   return key;
+}
+
+// Max ephemeral sessions (spawn/subagent) to show in the dropdown.
+const MAX_EPHEMERAL_SESSIONS = 10;
+// Time window for ephemeral sessions (2 hours in milliseconds).
+const EPHEMERAL_SESSION_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Determines if a session is "permanent" (should always be shown in dropdown).
+ * Permanent sessions include:
+ * - Main sessions for any agent (agent:*:main or just "main")
+ * - Group/channel sessions (agent:*:channel:group:* or kind === "group")
+ * - Direct message sessions (agent:*:channel:*)
+ *
+ * Ephemeral sessions that get recency filtering:
+ * - Spawn sessions (agent:*:spawn:*)
+ * - Subagent sessions (agent:*:subagent:*)
+ */
+function isEphemeralSession(key: string, _row?: SessionsListResult["sessions"][number]): boolean {
+  const parsed = parseSessionKeyParts(key);
+  if (!parsed) {
+    // Non-agent keys: assume permanent.
+    return false;
+  }
+  // Spawn and subagent sessions are ephemeral.
+  return parsed.sessionType === "spawn" || parsed.sessionType === "subagent";
 }
 
 function resolveSessionOptions(
   sessionKey: string,
   sessions: SessionsListResult | null,
   mainSessionKey?: string | null,
+  agents?: AgentLookup,
 ) {
   const seen = new Set<string>();
   const options: Array<{ key: string; displayName?: string }> = [];
@@ -224,34 +323,52 @@ function resolveSessionOptions(
   const resolvedMain = mainSessionKey && sessions?.sessions?.find((s) => s.key === mainSessionKey);
   const resolvedCurrent = sessions?.sessions?.find((s) => s.key === sessionKey);
 
-  // Add main session key first
+  // Add main session key first.
   if (mainSessionKey) {
     seen.add(mainSessionKey);
     options.push({
       key: mainSessionKey,
-      displayName: resolveSessionDisplayName(mainSessionKey, resolvedMain || undefined),
+      displayName: resolveSessionDisplayName(mainSessionKey, resolvedMain || undefined, agents),
     });
   }
 
-  // Add current session key next
+  // Add current session key next.
   if (!seen.has(sessionKey)) {
     seen.add(sessionKey);
     options.push({
       key: sessionKey,
-      displayName: resolveSessionDisplayName(sessionKey, resolvedCurrent),
+      displayName: resolveSessionDisplayName(sessionKey, resolvedCurrent, agents),
     });
   }
 
-  // Add sessions from the result
+  // Separate permanent and ephemeral sessions.
+  // Permanent sessions (main, groups, channels) are always shown.
+  // Ephemeral sessions (spawn, subagent) are limited by recency and count.
+  const now = Date.now();
+  const cutoff = now - EPHEMERAL_SESSION_WINDOW_MS;
+  let ephemeralCount = 0;
+
   if (sessions?.sessions) {
     for (const s of sessions.sessions) {
-      if (!seen.has(s.key)) {
-        seen.add(s.key);
-        options.push({
-          key: s.key,
-          displayName: resolveSessionDisplayName(s.key, s),
-        });
+      if (seen.has(s.key)) {
+        continue;
       }
+
+      const ephemeral = isEphemeralSession(s.key, s);
+      if (ephemeral) {
+        // Apply recency filter and count limit to ephemeral sessions.
+        const updatedAt = s.updatedAt ?? 0;
+        if (updatedAt < cutoff || ephemeralCount >= MAX_EPHEMERAL_SESSIONS) {
+          continue;
+        }
+        ephemeralCount += 1;
+      }
+
+      seen.add(s.key);
+      options.push({
+        key: s.key,
+        displayName: resolveSessionDisplayName(s.key, s, agents),
+      });
     }
   }
 
