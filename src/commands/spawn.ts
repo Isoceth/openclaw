@@ -9,7 +9,7 @@ import {
 import { AGENT_LANE_SUBAGENT } from "../agents/lanes.js";
 import { buildSubagentSystemPrompt } from "../agents/subagent-announce.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
-import { normalizeThinkLevel } from "../auto-reply/thinking.js";
+import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinking.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { loadConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
@@ -31,6 +31,11 @@ export type SpawnCliOpts = {
   json?: boolean;
 };
 
+// TODO Handle stdin read errors [8big]
+// tags: error-handling, review:branch-feature-spawn-command
+// Stdin read can fail if the stream is closed or there are read errors.
+// Currently errors propagate as unhandled promise rejections without context.
+// ---
 // readStdin reads all data from stdin and returns it as a UTF-8 string.
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -137,6 +142,12 @@ async function spawnViaGateway(params: {
   const sessionKey = `agent:${params.agentId}:spawn:${crypto.randomUUID()}`;
   const idempotencyKey = crypto.randomUUID();
 
+  // TODO Handle session.patch RPC failure [l5c4]
+  // tags: error-handling, review:branch-feature-spawn-command
+  // If session.patch fails (invalid model, gateway error), the error propagates
+  // without context about which model was requested or that this was the patch step.
+  // User sees generic RPC error instead of actionable message.
+  // ---
   // Patch session with model override if provided.
   if (params.model) {
     await callGateway({
@@ -152,9 +163,15 @@ async function spawnViaGateway(params: {
     task: params.task,
   });
 
-  // Normalize thinking level if provided.
+  // Normalize thinking level if provided. Validation happens in spawnCommand.
   const thinking = params.thinking ? normalizeThinkLevel(params.thinking) : undefined;
 
+  // TODO Handle agent spawn RPC failure [47dp]
+  // tags: error-handling, review:branch-feature-spawn-command
+  // If agent RPC fails (no agents available, gateway queue full, auth error),
+  // error propagates without actionable context. User sees generic RPC error
+  // instead of clear message like "No agents available" or "Gateway overloaded".
+  // ---
   // Call gateway agent RPC.
   const response = await callGateway<{ runId: string }>({
     method: "agent",
@@ -202,6 +219,12 @@ async function waitForSpawnCompletion(params: {
 }): Promise<WaitResult> {
   const waitMs = Math.min(params.timeoutMs, 60_000);
 
+  // TODO Handle agent.wait RPC failure [tp3y]
+  // tags: error-handling, review:branch-feature-spawn-command
+  // If agent.wait RPC fails (gateway disconnected, runId not found), error
+  // propagates without context. User won't know if this is a transient network
+  // issue vs. the run never started. Should provide session key for recovery.
+  // ---
   // Wait for the agent run to complete.
   const wait = await callGateway<{
     status?: string;
@@ -225,9 +248,16 @@ async function waitForSpawnCompletion(params: {
   const startedAt = typeof wait?.startedAt === "number" ? wait.startedAt : undefined;
   const endedAt = typeof wait?.endedAt === "number" ? wait.endedAt : undefined;
 
+  // TODO Handle chat.history RPC failure when retrieving response
+  // tags: error-handling, review:branch-feature-spawn-command
+  // If readLatestAssistantReply fails (chat.history RPC error), the error
+  // propagates without context. User won't know if the subagent completed but
+  // response retrieval failed, vs. the subagent itself failing.
+  // ---
   // If the wait completed successfully, retrieve the final response.
+  // Only read on success - during timeout the agent may still be processing.
   let response: string | undefined;
-  if (status === "ok" || status === "timeout") {
+  if (status === "ok") {
     const { readLatestAssistantReply } = await import("../agents/tools/agent-step.js");
     response = await readLatestAssistantReply({ sessionKey: params.sessionKey });
   }
@@ -275,6 +305,14 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
     // Resolve and validate agent ID.
     const { agentId } = resolveSpawnAgent(opts, cfg);
 
+    // TODO Add test for timeout validation logic
+    // tags: test-coverage, review:branch-feature-spawn-command
+    // Timeout parsing handles user input and validates range. Should test:
+    // - Valid numeric timeout strings parse correctly
+    // - Non-numeric strings throw helpful error
+    // - Negative values are rejected
+    // - Fallback to config default when no --timeout provided
+    // ---
     // Determine timeout: use opts.timeout (seconds) or config default.
     const timeoutOverrideSeconds = opts.timeout ? Number.parseInt(opts.timeout, 10) : undefined;
     if (
@@ -288,13 +326,26 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
       overrideSeconds: timeoutOverrideSeconds,
     });
 
+    // Validate thinking level if provided.
+    if (opts.thinking && !normalizeThinkLevel(opts.thinking)) {
+      throw new Error(
+        `Invalid thinking level: "${opts.thinking}". Valid levels: ${formatThinkingLevels()}`,
+      );
+    }
+
+    // TODO Wrap spawn/wait errors with recovery context
+    // tags: error-handling, review:branch-feature-spawn-command
+    // If spawnViaGateway or waitForSpawnCompletion throw, error propagates
+    // without session key or transcript path for debugging/recovery. User
+    // should know where to find partial results even when spawn/wait fail.
+    // ---
     // Spawn the subagent via gateway.
     const { runId, sessionKey } = await spawnViaGateway({
       agentId,
       task: taskBody,
       model: opts.model,
       thinking: opts.thinking,
-      timeout: opts.timeout ? Number.parseInt(opts.timeout, 10) : undefined,
+      timeout: timeoutOverrideSeconds,
     });
 
     // Wait for the subagent to complete and retrieve the result.
@@ -316,11 +367,33 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
       const storePath = resolveStorePath(cfg.session?.store, { agentId });
       const store = loadSessionStore(storePath);
       const sessionEntry = store[mainSessionKey];
+
+      // Validate session exists before attempting delivery.
+      if (!sessionEntry) {
+        throw new Error(
+          `Cannot deliver: agent "${agentId}" has no active chat session. Start a conversation with the agent first.`,
+        );
+      }
+
       const deliveryContext = deliveryContextFromSession(sessionEntry);
+
+      // Validate delivery context has required channel information.
+      if (!deliveryContext?.channel) {
+        throw new Error(
+          `Cannot deliver: agent "${agentId}" session has no channel context. The agent may need to receive a message first.`,
+        );
+      }
 
       // Prepare the message to deliver.
       const messageToDeliver = result.response || "(no output)";
 
+      // TODO Handle delivery RPC failure
+      // tags: error-handling, review:branch-feature-spawn-command
+      // If gateway delivery fails (channel unreachable, auth error, rate limit),
+      // error propagates without context. User won't know if subagent succeeded but
+      // delivery failed. Should catch and provide: "Subagent completed but delivery
+      // failed: [error]" with transcript path for recovery.
+      // ---
       // Call the gateway to deliver the message to the agent's chat channel.
       await callGateway({
         method: "agent",
