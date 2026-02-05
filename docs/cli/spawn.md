@@ -42,16 +42,17 @@ Provide the task via one of three methods (mutually exclusive):
 
 ## Options
 
-| Flag                   | Description                                                        |
-| ---------------------- | ------------------------------------------------------------------ |
-| `[task]`               | Task as positional argument (use `-` to read from stdin)           |
-| `-m, --message <text>` | Task message (alternative to positional argument)                  |
-| `-a, --agent <id>`     | Agent to spawn (default: default agent)                            |
-| `--deliver`            | Send result to agent's chat channel instead of terminal            |
-| `--model <model>`      | Override model (provider/model format)                             |
-| `--thinking <level>`   | Override thinking level: `off`, `minimal`, `low`, `medium`, `high` |
-| `--timeout <seconds>`  | Run timeout in seconds (default: 600 or config value)              |
-| `--json`               | Output result as JSON                                              |
+| Flag                   | Description                                                              |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `[task]`               | Task as positional argument (use `-` to read from stdin)                 |
+| `-m, --message <text>` | Task message (alternative to positional argument)                        |
+| `-a, --agent <id>`     | Agent to spawn (default: default agent)                                  |
+| `--deliver`            | Send result to agent's chat channel instead of terminal (see below)      |
+| `--async`              | Don't wait for completion; return immediately after spawning (see below) |
+| `--model <model>`      | Override model (provider/model format)                                   |
+| `--thinking <level>`   | Override thinking level: `off`, `minimal`, `low`, `medium`, `high`       |
+| `--timeout <seconds>`  | Run timeout in seconds (default: 600 or config value)                    |
+| `--json`               | Output result as JSON                                                    |
 
 ## Examples
 
@@ -96,12 +97,49 @@ openclaw spawn "Fetch status" --timeout 30
 
 ### Delivery Mode
 
+When `--deliver` is set, the result is sent to the specified agent's chat channel instead of printing to terminal.
+
+**Agent selection determines delivery target:**
+
+- `--agent ops --deliver` → spawns ops agent's subagent, delivers to ops agent's chat channel
+- `--deliver` (no `--agent`) → uses default agent, delivers to default agent's chat channel
+
+The delivery target is always the chat channel of the agent specified by `--agent` (or the default agent if not specified).
+
 ```bash
-# Send result to agent's chat channel
+# Send result to default agent's chat channel
 openclaw spawn "Generate report" --deliver
 
-# Combine with agent selection
+# Spawn subagent for ops, deliver to ops agent's chat channel
 openclaw spawn "Daily summary" --agent ops --deliver
+```
+
+### Async Mode
+
+When `--async` is set, the command returns immediately after spawning the subagent without waiting for completion. Use this for fire-and-forget tasks where you don't need the result in the current script.
+
+```bash
+# Spawn and return immediately
+openclaw spawn "Process backlog" --async
+
+# Combine with JSON for structured confirmation
+openclaw spawn "Background cleanup" --async --json
+```
+
+Async mode outputs the session key and run ID so you can check on the task later if needed:
+
+```
+Spawned: agent:default:spawn:a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+With `--json`:
+
+```json
+{
+  "status": "spawned",
+  "sessionKey": "agent:default:spawn:a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "runId": "12345678-1234-1234-1234-123456789abc"
+}
 ```
 
 ### JSON Output
@@ -158,11 +196,27 @@ Outputs structured JSON:
 
 ### Delivery Mode
 
-Sends the result to the agent's chat channel and prints confirmation:
+Sends the result to the agent's chat channel. The response is still printed to stdout, followed by a delivery confirmation:
 
 ```
+The system status is healthy. All services are running normally.
+
 Delivered to telegram (@username)
 ```
+
+With `--json`, the output includes both the response and delivery info:
+
+```json
+{
+  "status": "success",
+  "response": "The system status is healthy. All services are running normally.",
+  "sessionKey": "agent:default:spawn:a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "delivered": true,
+  "deliveredTo": "telegram (@username)"
+}
+```
+
+The delivered message uses announce formatting with stats, allowing the main agent to summarize the result naturally for the user.
 
 ## Exit Codes
 
@@ -301,25 +355,41 @@ Per-agent overrides:
 
 CLI flags override both config defaults and per-agent settings.
 
-## Comparison with Other Commands
+## Comparison with Other Methods
 
-| Command               | Session Type     | Returns          | Delivery     |
-| --------------------- | ---------------- | ---------------- | ------------ |
-| `openclaw agent`      | Main session     | Immediately      | Optional     |
-| `openclaw spawn`      | Spawn session    | After completion | Optional     |
-| `sessions_spawn` tool | Subagent session | Immediately      | Via announce |
+### `openclaw agent` — Direct Agent Invocation
 
-Use `spawn` when:
+`openclaw agent` runs a turn on the **main agent session** directly. It's a different use case entirely:
 
-- You need the result before continuing (synchronous)
-- Running from scripts that need exit codes
-- You want delivery mode without announce formatting
+- Sends a message to the main agent as if from a chat channel
+- The main agent processes and responds in its conversation context
+- Optional `--deliver` sends the response to a chat channel
 
-Use `sessions_spawn` tool when:
+Use `openclaw agent` when you want to interact with your main agent, not spawn a subagent for isolated work.
 
-- You want parallel execution (asynchronous)
-- The agent should continue while work happens in background
-- You want announce formatting and stats
+### `openclaw spawn` vs `sessions_spawn` Tool
+
+Both spawn isolated subagents for task-specific work. The key difference is accessibility:
+
+| Aspect              | `openclaw spawn`                              | `sessions_spawn` tool                |
+| ------------------- | --------------------------------------------- | ------------------------------------ |
+| **Accessibility**   | CLI (scripts, automations, cron)              | Internal to agents only              |
+| **Returns**         | Waits for completion (CLI must run to finish) | Immediately (non-blocking)           |
+| **Parallelism**     | Multiple CLI instances run in parallel        | Agent continues while subagent works |
+| **Result delivery** | `--deliver` or stdout                         | Announce with formatting and stats   |
+| **Session type**    | `spawn:<uuid>`                                | `subagent:<uuid>`                    |
+
+**When to use `openclaw spawn`:**
+
+- External automations, scripts, CI pipelines
+- You need an exit code or captured output
+- Programmatic subagent access from outside an agent
+
+**When to use `sessions_spawn`:**
+
+- Agent-initiated background work
+- Task delegation within agent context
+- Announce-style result reporting
 
 ## Limitations
 
