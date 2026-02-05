@@ -24,6 +24,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`message`](/cli/message)
 - [`agent`](/cli/agent)
 - [`agents`](/cli/agents)
+- [`spawn`](/cli/spawn)
 - [`acp`](/cli/acp)
 - [`status`](/cli/status)
 - [`health`](/cli/health)
@@ -129,6 +130,7 @@ openclaw [--dev] [--profile <name>] <command>
     list
     add
     delete
+  spawn
   acp
   status
   health

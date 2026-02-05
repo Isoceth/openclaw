@@ -10,6 +10,10 @@ title: "Sub-Agents"
 
 Sub-agents are background agent runs spawned from an existing agent run. They run in their own session (`agent:<agentId>:subagent:<uuid>`) and, when finished, **announce** their result back to the requester chat channel.
 
+Related:
+
+- CLI command: [`openclaw spawn`](/cli/spawn) (spawns a subagent and waits for completion)
+
 ## Slash command
 
 Use `/subagents` to inspect or control sub-agent runs for the **current session**:

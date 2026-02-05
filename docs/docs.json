@@ -1145,6 +1145,7 @@
                   "cli/sessions",
                   "cli/setup",
                   "cli/skills",
+                  "cli/spawn",
                   "cli/status",
                   "cli/system",
                   "cli/tui",
