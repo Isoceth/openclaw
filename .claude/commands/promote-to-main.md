@@ -72,11 +72,11 @@ staging:  X──S  (reset to match main)
    git merge --squash staging
    ```
 
-4. Commit with a summary message. Use the commit list from Phase 1 to write a meaningful message:
+4. Commit with a conventional commit message. Use type `chore` and summarise the key changes in the subject line. Use the commit list from Phase 1 for the body:
 
    ```bash
    git commit -m "$(cat <<'EOF'
-   <summary of what this promotion includes>
+   chore: <brief summary of key changes>
 
    Squash merge of staging into main.
 
