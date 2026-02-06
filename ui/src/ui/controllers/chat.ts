@@ -15,6 +15,7 @@ export type ChatState = {
   chatAttachments: ChatAttachment[];
   chatRunId: string | null;
   chatStream: string | null;
+  chatStreamContent: unknown[] | null;
   chatStreamStartedAt: number | null;
   lastError: string | null;
 };
@@ -103,6 +104,7 @@ export async function sendChatMessage(
   const runId = generateUUID();
   state.chatRunId = runId;
   state.chatStream = "";
+  state.chatStreamContent = null;
   state.chatStreamStartedAt = now;
 
   // Convert attachments to API format
@@ -135,6 +137,7 @@ export async function sendChatMessage(
     const error = String(err);
     state.chatRunId = null;
     state.chatStream = null;
+    state.chatStreamContent = null;
     state.chatStreamStartedAt = null;
     state.lastError = error;
     state.chatMessages = [
@@ -193,16 +196,25 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         state.chatStream = next;
       }
     }
+    // Store the content array for multi-bubble rendering
+    const msg = payload.message as Record<string, unknown> | undefined;
+    const content = msg?.content;
+    if (Array.isArray(content)) {
+      state.chatStreamContent = content;
+    }
   } else if (payload.state === "final") {
     state.chatStream = null;
+    state.chatStreamContent = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
   } else if (payload.state === "aborted") {
     state.chatStream = null;
+    state.chatStreamContent = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
   } else if (payload.state === "error") {
     state.chatStream = null;
+    state.chatStreamContent = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
     state.lastError = payload.errorMessage ?? "chat error";

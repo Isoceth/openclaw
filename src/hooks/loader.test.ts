@@ -11,6 +11,12 @@ import {
 } from "./internal-hooks.js";
 import { loadInternalHooks } from "./loader.js";
 
+// Isolate from real managed/workspace hooks on the host system.
+// These tests exercise the legacy config handler path only.
+vi.mock("./workspace.js", () => ({
+  loadWorkspaceHookEntries: () => [],
+}));
+
 describe("loader", () => {
   let tmpDir: string;
   let originalBundledDir: string | undefined;

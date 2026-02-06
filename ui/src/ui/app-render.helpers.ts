@@ -97,6 +97,7 @@ export function renderChatControls(state: AppViewState) {
             state.sessionKey = next;
             state.chatMessage = "";
             state.chatStream = null;
+            (state as unknown as OpenClawApp).chatStreamContent = null;
             (state as unknown as OpenClawApp).chatStreamStartedAt = null;
             state.chatRunId = null;
             (state as unknown as OpenClawApp).resetToolStream();
@@ -107,7 +108,11 @@ export function renderChatControls(state: AppViewState) {
               lastActiveSessionKey: next,
             });
             void state.loadAssistantIdentity();
-            syncUrlWithSessionKey(next, true);
+            syncUrlWithSessionKey(
+              state as unknown as Parameters<typeof syncUrlWithSessionKey>[0],
+              next,
+              true,
+            );
             void loadChatHistory(state as unknown as ChatState);
           }}
         >

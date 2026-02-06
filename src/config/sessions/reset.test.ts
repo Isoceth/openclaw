@@ -3,7 +3,6 @@ import type { SessionConfig } from "../types.base.js";
 import {
   evaluateSessionFreshness,
   resolveChannelResetConfig,
-  resolveDailyResetAtMs,
   resolveSessionResetPolicy,
   type SessionResetPolicy,
 } from "./reset.js";

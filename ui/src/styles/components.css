@@ -518,6 +518,12 @@
   border-color: var(--accent);
 }
 
+:root[data-theme="light"] .btn.active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
 /* ===========================================
    Utilities
    =========================================== */
