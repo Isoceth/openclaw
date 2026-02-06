@@ -2,7 +2,7 @@ import type { SessionConfig, SessionResetConfig } from "../types.base.js";
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { DEFAULT_IDLE_MINUTES } from "./types.js";
 
-export type SessionResetMode = "daily" | "idle";
+export type SessionResetMode = "daily" | "idle" | "never";
 export type SessionResetType = "dm" | "group" | "thread";
 
 export type SessionResetPolicy = {
@@ -117,17 +117,24 @@ export function resolveChannelResetConfig(params: {
   sessionCfg?: SessionConfig;
   channel?: string | null;
 }): SessionResetConfig | undefined {
-  const resetByChannel = params.sessionCfg?.resetByChannel;
-  if (!resetByChannel) {
-    return undefined;
-  }
   const normalized = normalizeMessageChannel(params.channel);
   const fallback = params.channel?.trim().toLowerCase();
   const key = normalized ?? fallback;
   if (!key) {
     return undefined;
   }
-  return resetByChannel[key] ?? resetByChannel[key.toLowerCase()];
+  const resetByChannel = params.sessionCfg?.resetByChannel;
+  const explicit = resetByChannel?.[key] ?? resetByChannel?.[key.toLowerCase()];
+  if (explicit) {
+    return explicit;
+  }
+  // Webchat sessions should never auto-reset by default — the user can see
+  // their full history in the UI, so silently discarding context is confusing.
+  // Operators can still override via resetByChannel.webchat in config.
+  if (key === "webchat") {
+    return { mode: "never" };
+  }
+  return undefined;
 }
 
 export function evaluateSessionFreshness(params: {
@@ -135,6 +142,10 @@ export function evaluateSessionFreshness(params: {
   now: number;
   policy: SessionResetPolicy;
 }): SessionFreshness {
+  // "never" mode: session is always fresh, no automatic reset.
+  if (params.policy.mode === "never") {
+    return { fresh: true };
+  }
   const dailyResetAt =
     params.policy.mode === "daily"
       ? resolveDailyResetAtMs(params.now, params.policy.atHour)
