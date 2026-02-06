@@ -52,17 +52,7 @@ staging:  X──S  (reset to match main)
 
    Present the commit list and ask the user to confirm the squash merge.
 
-### Phase 2: Build & Test
-
-Before merging, verify staging is healthy:
-
-```bash
-pnpm build && pnpm check && pnpm test
-```
-
-**Stop if any step fails.** Report the failure and let the user decide.
-
-### Phase 3: Squash Merge
+### Phase 2: Squash Merge
 
 1. Switch to main:
 
@@ -104,7 +94,7 @@ pnpm build && pnpm check && pnpm test
    git push origin main
    ```
 
-### Phase 4: Realign Staging
+### Phase 3: Realign Staging
 
 **This is the critical step that prevents divergence.** After squash-merging, staging's history has diverged from main. The individual commits on staging are now redundant — their content lives in the squash commit on main. Staging must be reset to match main.
 
@@ -135,15 +125,15 @@ pnpm build && pnpm check && pnpm test
 
    Both branches should point to the same commit.
 
-### Phase 5: Install & Link
+### Phase 4: Install & Link
 
 Reinstall dependencies and relink, since the squash merge may have changed `package.json` or lockfiles:
 
 ```bash
-pnpm install && pnpm link
+pnpm install && npm link
 ```
 
-### Phase 6: Verify
+### Phase 5: Verify
 
 Confirm final state:
 
@@ -162,7 +152,7 @@ Without realigning, staging keeps its old commits while main has the squash. Nex
 
 ## Safety Notes
 
-- **Never skip Phase 4** (realign) — this is the whole point of the command
+- **Never skip Phase 3** (realign) — this is the whole point of the command
 - The `--force-with-lease` on staging push is safe: nobody else pushes to staging
-- If Phase 3 fails or conflicts arise, you're still on main with uncommitted squash changes — `git merge --abort` or `git reset --hard HEAD` to undo
+- If Phase 2 fails or conflicts arise, you're still on main with uncommitted squash changes — `git merge --abort` or `git reset --hard HEAD` to undo
 - Keep the user informed at each step

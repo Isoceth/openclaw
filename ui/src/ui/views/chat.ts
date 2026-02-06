@@ -32,7 +32,6 @@ export type ChatProps = {
   messages: unknown[];
   toolMessages: unknown[];
   stream: string | null;
-  streamContent?: unknown[] | null;
   streamStartedAt: number | null;
   assistantAvatarUrl?: string | null;
   draft: string;
@@ -459,62 +458,6 @@ function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
   return result;
 }
 
-type StreamSegment =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown };
-
-function splitStreamContent(content: unknown[]): StreamSegment[] {
-  const segments: StreamSegment[] = [];
-  let textAccum = "";
-
-  for (const block of content) {
-    if (!block || typeof block !== "object") continue;
-    const b = block as Record<string, unknown>;
-    const blockType = typeof b.type === "string" ? b.type : "";
-
-    if (blockType === "text" && typeof b.text === "string") {
-      textAccum += (textAccum ? "\n" : "") + b.text;
-    } else if (blockType === "tool_use") {
-      // Flush accumulated text before the tool call
-      if (textAccum.trim()) {
-        segments.push({ type: "text", text: textAccum });
-        textAccum = "";
-      }
-      segments.push({
-        type: "tool_use",
-        id: typeof b.id === "string" ? b.id : "",
-        name: typeof b.name === "string" ? b.name : "tool",
-        input: b.input,
-      });
-    }
-    // Skip other block types (thinking, etc.)
-  }
-
-  // Flush remaining text
-  if (textAccum) {
-    segments.push({ type: "text", text: textAccum });
-  }
-
-  return segments;
-}
-
-function buildToolResultMap(toolMessages: unknown[]): Map<string, { output?: string }> {
-  const map = new Map<string, { output?: string }>();
-  for (const msg of toolMessages) {
-    const m = msg as Record<string, unknown>;
-    const toolCallId = typeof m.toolCallId === "string" ? m.toolCallId : "";
-    if (!toolCallId) continue;
-    const content = Array.isArray(m.content) ? m.content : [];
-    for (const block of content) {
-      const b = block as Record<string, unknown>;
-      if (b.type === "toolresult" || b.type === "tool_result") {
-        map.set(toolCallId, { output: typeof b.text === "string" ? b.text : undefined });
-      }
-    }
-  }
-  return map;
-}
-
 function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   const items: ChatItem[] = [];
   const history = Array.isArray(props.messages) ? props.messages : [];
@@ -545,104 +488,38 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
       message: msg,
     });
   }
-  // During streaming with content array: render multi-bubble view
-  if (
-    props.stream !== null &&
-    Array.isArray(props.streamContent) &&
-    props.streamContent.length > 0
-  ) {
-    const segments = splitStreamContent(props.streamContent);
-    const toolResultMap = buildToolResultMap(tools);
-    const streamTs = props.streamStartedAt ?? Date.now();
-
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const isLast = i === segments.length - 1;
-
-      if (segment.type === "text") {
-        if (!segment.text.trim()) continue;
-        if (isLast) {
-          // Last text segment: render as streaming bubble with typing indicator
-          items.push({
-            kind: "stream",
-            key: `stream:${props.sessionKey}:${streamTs}:${i}`,
-            text: segment.text,
-            startedAt: streamTs,
-          });
-        } else {
-          // Earlier text segment: render as committed message bubble
-          items.push({
-            kind: "message",
-            key: `stream-text:${props.sessionKey}:${i}`,
-            message: {
-              role: "assistant",
-              content: [{ type: "text", text: segment.text }],
-              timestamp: streamTs,
-            },
-          });
-        }
-      } else if (segment.type === "tool_use") {
-        // Build tool card message, with optional result from the tool stream
-        const toolContent: Record<string, unknown>[] = [];
-        toolContent.push({
-          type: "toolcall",
-          name: segment.name,
-          arguments: segment.input ?? {},
-        });
-        const result = toolResultMap.get(segment.id);
-        if (result?.output) {
-          toolContent.push({
-            type: "toolresult",
-            name: segment.name,
-            text: result.output,
-          });
-        }
-        items.push({
-          kind: "message",
-          key: `stream-tool:${segment.id || `${props.sessionKey}:${i}`}`,
-          message: {
-            role: "assistant",
-            toolCallId: segment.id,
-            content: toolContent,
-            timestamp: streamTs,
-          },
-        });
-      }
-    }
-
-    // If last segment is a tool_use (waiting for output), show reading indicator
-    const lastSegment = segments[segments.length - 1];
-    if (!lastSegment || lastSegment.type === "tool_use") {
+  if (props.stream !== null) {
+    // During streaming: render tool cards from the tool stream as individual
+    // bubbles, then the current text as the final streaming bubble.
+    // The gateway sends tool events on a separate stream (not in chat deltas),
+    // so we pull tool cards from toolMessages rather than streamContent.
+    for (let i = 0; i < tools.length; i++) {
       items.push({
-        kind: "reading-indicator",
-        key: `stream:${props.sessionKey}:reading`,
+        kind: "message",
+        key: messageKey(tools[i], i + history.length),
+        message: tools[i],
       });
     }
-  } else {
-    // Fallback: no content array available, or not streaming.
-    // Show tool messages only when showThinking is enabled (existing behaviour).
-    if (props.showThinking) {
-      for (let i = 0; i < tools.length; i++) {
-        items.push({
-          kind: "message",
-          key: messageKey(tools[i], i + history.length),
-          message: tools[i],
-        });
-      }
-    }
 
-    if (props.stream !== null) {
-      const key = `stream:${props.sessionKey}:${props.streamStartedAt ?? "live"}`;
-      if (props.stream.trim().length > 0) {
-        items.push({
-          kind: "stream",
-          key,
-          text: props.stream,
-          startedAt: props.streamStartedAt ?? Date.now(),
-        });
-      } else {
-        items.push({ kind: "reading-indicator", key });
-      }
+    const streamKey = `stream:${props.sessionKey}:${props.streamStartedAt ?? "live"}`;
+    if (props.stream.trim().length > 0) {
+      items.push({
+        kind: "stream",
+        key: streamKey,
+        text: props.stream,
+        startedAt: props.streamStartedAt ?? Date.now(),
+      });
+    } else {
+      items.push({ kind: "reading-indicator", key: streamKey });
+    }
+  } else if (props.showThinking) {
+    // Not streaming: show tool messages only when showThinking is enabled.
+    for (let i = 0; i < tools.length; i++) {
+      items.push({
+        kind: "message",
+        key: messageKey(tools[i], i + history.length),
+        message: tools[i],
+      });
     }
   }
 
