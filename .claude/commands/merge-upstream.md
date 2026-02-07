@@ -1,119 +1,48 @@
 # Merge Upstream into Staging
 
-Absorb upstream changes into the staging branch.
+Merge `upstream/main` into `staging` via `git merge` (not squash/cherry-pick). The merge commit preserves parent links so future merges only process genuinely new commits.
 
-## Overview
-
-This command merges `upstream/main` into `staging` as a single merge commit. Upstream changes always land on staging first — never directly on main.
+ARGUMENTS: $ARGUMENTS
 
 ```
-upstream/main ──────────────────────> (fetched)
-                                       \
-staging ◄──────────────────────────── merge
+upstream/main ───────> (fetched)
+                        \
+staging ◄──────────── merge commit (two parents)
 ```
 
 ## Prerequisites
 
-- Working tree must be clean (no uncommitted changes)
-- Remote `upstream` must be configured (`git remote -v` should show the original repo)
+- Clean working tree
+- Remote `upstream` configured
 
-## Workflow
+## Phase 1: Assess
 
-### Phase 1: Assess
+1. `git fetch upstream`
+2. `git log --oneline staging..upstream/main` — if empty, report up to date and stop.
+3. Summarise incoming changes (features, fixes, docs, chores).
+4. Spawn parallel Explore agents to assess conflict risk. Each examines a subset of commits, reports what changed and which files overlap with our modifications. You coordinate — don't duplicate their work.
+5. Present summary: commit count, categories, conflict risk per file. Ask user whether to proceed.
 
-1. Fetch upstream:
+## Phase 2: Merge
 
-   ```bash
-   git fetch upstream
-   ```
+1. Verify clean working tree. **Stop if dirty.**
+2. `git switch staging`
+3. `git merge upstream/main`
+4. If conflicts: report each conflict, show both sides, ask user for resolution strategy (ours/theirs/manual). After resolving: `git add <files> && git commit --no-edit`.
 
-2. Check how far behind staging is:
+## Phase 3: Verify
 
-   ```bash
-   git log --oneline staging..upstream/main
-   ```
+1. `pnpm install` (upstream may have changed deps)
+2. `pnpm build && pnpm check`
+3. Ask user about `pnpm test`.
+4. Report pass/fail.
 
-   If there are no new commits, report that staging is up to date and stop.
+## Phase 4: Push
 
-3. Summarise what's incoming at a high level (fixes, features, docs, chores).
+Ask user, then: `git push origin staging`
 
-4. **Spawn a team of Explore agents** to assess the incoming changes in parallel:
-   - Each agent examines a subset of the commits
-   - Reports: what changed, which files, potential conflict areas with our modifications
-   - Flags commits that touch files we've heavily modified (high conflict risk)
+## Safety
 
-5. Present a summary to the user:
-   - Total commits incoming
-   - Categories of changes
-   - Conflict risk assessment (which files are likely to conflict)
-   - Ask the user whether to proceed with the merge
-
-### Phase 2: Merge
-
-1. Verify clean working tree:
-
-   ```bash
-   git status
-   ```
-
-   **Stop if dirty.** Ask user to commit or stash first.
-
-2. Switch to staging:
-
-   ```bash
-   git switch staging
-   ```
-
-3. Merge upstream/main as a single merge commit:
-
-   ```bash
-   git merge upstream/main
-   ```
-
-4. **If conflicts arise:**
-   - Report conflicting files and the nature of each conflict
-   - For each conflict, show our version vs upstream version
-   - Ask user how to resolve (ours / theirs / manual) per file
-   - After resolution, complete the merge commit:
-
-     ```bash
-     git add <resolved-files>
-     git commit --no-edit
-     ```
-
-### Phase 3: Verify
-
-1. Install dependencies (upstream may have changed them):
-
-   ```bash
-   pnpm install
-   ```
-
-2. Build and lint:
-
-   ```bash
-   pnpm build && pnpm check
-   ```
-
-3. Ask the user if they want full test verification:
-
-   ```bash
-   pnpm test
-   ```
-
-4. Report results — pass/fail for each step.
-
-### Phase 4: Push
-
-Ask the user if they want to push staging to origin:
-
-```bash
-git push origin staging
-```
-
-## Safety Notes
-
-- **Never merge upstream directly into main** — staging is the integration target
-- **Never force-push staging** without explicit user approval
-- Keep the user informed at each step
-- If verification fails, the merge commit is still local — user can `git reset --hard HEAD~1` to undo
+- Never merge upstream directly into main — staging is the integration target.
+- Never force-push staging without explicit approval.
+- If verification fails, the merge is still local — `git reset --hard HEAD~1` to undo.

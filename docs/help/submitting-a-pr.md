@@ -22,7 +22,7 @@ Good PRs make it easy for reviewers to understand intent, verify behavior, and l
 
 Guideline: concision > grammar. Be terse if it makes review faster.
 
-Baseline validation commands (run as appropriate for the change, and fix failures before submitting):
+### Baseline validation commands (run/fix failures for your change)
 
 - `pnpm lint`
 - `pnpm check`
