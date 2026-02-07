@@ -37,16 +37,26 @@ staging ◄───────────────────────
 
 3. Summarise what's incoming at a high level (fixes, features, docs, chores).
 
-4. **Spawn a team of Explore agents** to assess the incoming changes in parallel:
-   - Each agent examines a subset of the commits
-   - Reports: what changed, which files, potential conflict areas with our modifications
-   - Flags commits that touch files we've heavily modified (high conflict risk)
+4. **Create a team** to assess the incoming changes in parallel:
 
-5. Present a summary to the user:
+   Use `TeamCreate` to set up a merge assessment team, then spawn teammates to divide the work. Split commits into roughly equal groups and assign each teammate a subset.
+
+   Each teammate should:
+   - Examine their assigned commits in detail (`git show`, `git diff`)
+   - Report: what changed, which files, the nature of each change
+   - Identify potential conflict areas with our local modifications
+   - Flag commits that touch files we've heavily modified (high conflict risk)
+
+   **Team leader discipline:** You are the coordinator — not a worker. Do not duplicate your teammates' analysis. Spawn them, assign them work, and wait for their results. Do not read the same diffs they're reading or pre-empt their findings. Your job is to synthesise their reports into a coherent summary, not to race them to conclusions.
+
+5. Once all teammates have reported back, synthesise their findings and present a summary to the user:
    - Total commits incoming
-   - Categories of changes
-   - Conflict risk assessment (which files are likely to conflict)
+   - Categories of changes (fixes, features, docs, chores, dependencies)
+   - Conflict risk assessment (which files are likely to conflict and why)
+   - Any commits that warrant particular attention
    - Ask the user whether to proceed with the merge
+
+6. Shut down the assessment team before proceeding.
 
 ### Phase 2: Merge
 
@@ -103,7 +113,15 @@ staging ◄───────────────────────
 
 4. Report results — pass/fail for each step.
 
-### Phase 4: Push
+### Phase 4: Summary
+
+Present a brief summary of what the merge brought in:
+
+- **Key changes:** what's new, what's different, anything noteworthy
+- **Our modifications touched:** files where the merge overlapped with our local changes, and how conflicts (if any) were resolved
+- **Action items:** anything that needs follow-up (new config, deprecated APIs, migrations, etc.)
+
+### Phase 5: Push
 
 Ask the user if they want to push staging to origin:
 

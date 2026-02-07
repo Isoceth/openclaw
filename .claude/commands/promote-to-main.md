@@ -1,16 +1,18 @@
 # Promote Staging to Main
 
-Squash-merge staging into main so main gets a single clean commit, then realign staging.
+Merge staging into main with a merge commit, preserving full commit history and upstream links, then realign staging.
 
 ```
 staging:  A──B──C──D
                     \
-main:     X──────────S  (squash commit)
+main:     X──────────M  (merge commit, parents: X and D)
 
 After realign:
-main:     X──S
-staging:  X──S  (reset to match main)
+main:     X──────────M
+staging:  X──────────M  (reset to match main)
 ```
+
+A merge commit (rather than squash) keeps all original commit SHAs reachable in the graph. This preserves parent links to upstream commits that arrived via merge-upstream.
 
 ## Prerequisites
 
@@ -52,7 +54,7 @@ staging:  X──S  (reset to match main)
 
    Present the commit list and ask the user to confirm the squash merge.
 
-### Phase 2: Squash Merge
+### Phase 2: Merge
 
 1. Switch to main:
 
@@ -66,27 +68,26 @@ staging:  X──S  (reset to match main)
    git pull origin main
    ```
 
-3. Squash merge staging into main:
+3. Merge staging into main with a merge commit:
 
    ```bash
-   git merge --squash staging
+   git merge --no-ff staging
    ```
 
-4. Commit with a conventional commit message. Use type `chore` and summarise the key changes in the subject line. Use the commit list from Phase 1 for the body:
+   This creates a merge commit whose parents are main's tip and staging's tip, preserving the full commit history and upstream links.
 
-   ```bash
-   git commit -m "$(cat <<'EOF'
+4. The merge commit message should follow conventional commit format. Use type `chore` and summarise the key changes. Use the commit list from Phase 1 for the body:
+
+   ```
    chore: <brief summary of key changes>
 
-   Squash merge of staging into main.
+   Merge staging into main.
 
    Includes:
    - <bullet points from the commit list>
-   EOF
-   )"
    ```
 
-   Ask the user to review the commit message before committing.
+   Git will open the editor for the merge commit message. Ask the user to review before saving.
 
 5. Push main:
 
@@ -96,7 +97,7 @@ staging:  X──S  (reset to match main)
 
 ### Phase 3: Realign Staging
 
-**This is the critical step that prevents divergence.** After squash-merging, staging's history has diverged from main. The individual commits on staging are now redundant — their content lives in the squash commit on main. Staging must be reset to match main.
+**This is the critical step that prevents divergence.** After merging, staging's tip is an ancestor of main's merge commit, but staging doesn't have the merge commit itself. Staging must be reset to match main so both branches share the same HEAD.
 
 1. Switch back to staging:
 
