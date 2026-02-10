@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import type {
   ChannelAccountSnapshot,
@@ -8,7 +7,8 @@ import type {
 import type { OpenClawConfig } from "../../config/config.js";
 import { resolveChannelDefaultAccountId } from "../../channels/plugins/helpers.js";
 import { listChannelPlugins } from "../../channels/plugins/index.js";
-import { formatAge } from "./format.js";
+import { sha256HexPrefix } from "../../logging/redact-identifier.js";
+import { formatTimeAgo } from "./format.js";
 
 export type ChannelRow = {
   id: ChannelId;
@@ -55,10 +55,6 @@ function existsSyncMaybe(p: string | undefined): boolean | null {
   } catch {
     return null;
   }
-}
-
-function sha256HexPrefix(value: string, len = 8): string {
-  return crypto.createHash("sha256").update(value).digest("hex").slice(0, len);
 }
 
 function formatTokenHint(token: string, opts: { showSecrets: boolean }): string {
@@ -440,7 +436,7 @@ export async function buildChannelsTable(
           extra.push(link.selfE164);
         }
         if (link.linked && link.authAgeMs != null && link.authAgeMs >= 0) {
-          extra.push(`auth ${formatAge(link.authAgeMs)}`);
+          extra.push(`auth ${formatTimeAgo(link.authAgeMs)}`);
         }
         if (accounts.length > 1 || plugin.meta.forceAccountBinding) {
           extra.push(`accounts ${accounts.length || 1}`);

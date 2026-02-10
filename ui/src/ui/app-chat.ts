@@ -202,7 +202,7 @@ export async function handleSendChat(
   });
 }
 
-export async function refreshChat(host: ChatHost) {
+export async function refreshChat(host: ChatHost, opts?: { scheduleScroll?: boolean }) {
   // Load sessions without activeMinutes filter so permanent sessions (main, groups) are always
   // included. Client-side filtering in resolveSessionOptions handles limiting ephemeral sessions.
   await Promise.all([
@@ -210,7 +210,9 @@ export async function refreshChat(host: ChatHost) {
     loadSessions(host as unknown as OpenClawApp),
     refreshChatAvatar(host),
   ]);
-  scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
+  if (opts?.scheduleScroll !== false) {
+    scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
+  }
 }
 
 export const flushChatQueueForEvent = flushChatQueue;

@@ -15,7 +15,7 @@ type ScrollHost = {
   topbarObserver: ResizeObserver | null;
 };
 
-export function scheduleChatScroll(host: ScrollHost, force = false) {
+export function scheduleChatScroll(host: ScrollHost, force = false, smooth = false) {
   if (host.chatScrollFrame) {
     cancelAnimationFrame(host.chatScrollFrame);
   }
@@ -45,7 +45,7 @@ export function scheduleChatScroll(host: ScrollHost, force = false) {
       if (!target) {
         return;
       }
-      const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      const _distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
 
       // force=true only overrides when we haven't auto-scrolled yet (initial load).
       // After initial load, respect the user's scroll position.
@@ -60,7 +60,17 @@ export function scheduleChatScroll(host: ScrollHost, force = false) {
       if (effectiveForce) {
         host.chatHasAutoScrolled = true;
       }
-      target.scrollTop = target.scrollHeight;
+      const smoothEnabled =
+        smooth &&
+        (typeof window === "undefined" ||
+          typeof window.matchMedia !== "function" ||
+          !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      const scrollTop = target.scrollHeight;
+      if (typeof target.scrollTo === "function") {
+        target.scrollTo({ top: scrollTop, behavior: smoothEnabled ? "smooth" : "auto" });
+      } else {
+        target.scrollTop = scrollTop;
+      }
       host.chatUserNearBottom = true;
       host.chatNewMessagesBelow = false;
       const retryDelay = effectiveForce ? 150 : 120;
@@ -70,7 +80,7 @@ export function scheduleChatScroll(host: ScrollHost, force = false) {
         if (!latest) {
           return;
         }
-        const latestDistanceFromBottom =
+        const _latestDistanceFromBottom =
           latest.scrollHeight - latest.scrollTop - latest.clientHeight;
         const shouldStickRetry = effectiveForce || host.chatUserNearBottom;
         if (!shouldStickRetry) {
