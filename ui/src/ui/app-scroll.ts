@@ -45,7 +45,7 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
       if (!target) {
         return;
       }
-      const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      const _distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
 
       // force=true only overrides when we haven't auto-scrolled yet (initial load).
       // After initial load, respect the user's scroll position.
@@ -80,7 +80,7 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
         if (!latest) {
           return;
         }
-        const latestDistanceFromBottom =
+        const _latestDistanceFromBottom =
           latest.scrollHeight - latest.scrollTop - latest.clientHeight;
         const shouldStickRetry = effectiveForce || host.chatUserNearBottom;
         if (!shouldStickRetry) {
