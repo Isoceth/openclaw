@@ -62,9 +62,10 @@ Runs in the working directory (which stays on staging).
 
 ## Phase 4: Verify
 
-1. In worktree: `cd ../openclaw-main && pnpm install && npm link` — ensure main worktree environment is current.
-2. `git log --oneline main..staging` and `git log --oneline staging..main` — both empty.
-3. Report success with the merge commit SHA.
+1. In worktree: `cd ../openclaw-main && pnpm install && pnpm build && npm link` — install deps, compile, and expose the binary globally.
+2. `openclaw gateway restart` — restart the gateway with the new build.
+3. `git log --oneline main..staging` and `git log --oneline staging..main` — both empty.
+4. Report success with the merge commit SHA.
 
 ## Safety
 
