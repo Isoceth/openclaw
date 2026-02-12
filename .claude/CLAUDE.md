@@ -36,6 +36,29 @@ This is a fork. Three long-lived branches:
 
 - **Commits:** Use standard `git add`/`git commit` instead of `scripts/committer`.
 
-## Planning Documents
+## Fork Changes
 
-Feature plans live in `.motes/planning/<feature-name>/`. These are the source of truth for what to build.
+What this fork has changed from upstream. Essential context for merge conflict
+resolution — if a conflicting file touches one of these areas, our changes are
+intentional and should be preserved.
+
+### Webchat as independent channel
+
+Webchat is promoted to its own channel (on par with WhatsApp, Telegram, etc.)
+rather than being a thin UI layer. This enables channel-level features like
+bindings, per-channel config, and distinct routing.
+
+**Key areas:** `src/web/`, channel registry, gateway config, webchat UI.
+
+### CLI subagent command
+
+Added a CLI command to spawn a subagent from the command line.
+
+**Key areas:** CLI command definitions, agent spawning logic.
+
+### Webchat session dropdown
+
+Improved the session selector in the webchat UI — better UX for switching
+between and managing sessions.
+
+**Key areas:** `ui/src/ui/` session-related components.

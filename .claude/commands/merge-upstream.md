@@ -18,24 +18,22 @@ staging ◄──────────── merge commit (two parents)
 ## Phase 1: Assess
 
 1. `git fetch upstream`
-2. `git log --oneline staging..upstream/main` — if empty, report up to date and stop.
-3. Summarise incoming changes (features, fixes, docs, chores).
-4. Spawn parallel Explore agents to assess conflict risk. Each examines a subset of commits, reports what changed and which files overlap with our modifications. You coordinate — don't duplicate their work.
-5. Present summary: commit count, categories, conflict risk per file. Ask user whether to proceed.
+2. `git log --oneline staging..upstream/main | head -50` — if empty, report up to date and stop. If truncated, note total count with `git rev-list --count staging..upstream/main`.
+3. `git diff --stat staging..upstream/main | tail -20` — show which files changed and the summary line. This is your conflict risk indicator; no further analysis needed.
+4. Present: commit count, diff stat summary. Ask user whether to proceed.
 
 ## Phase 2: Merge
 
 1. Verify clean working tree. **Stop if dirty.**
 2. `git switch staging`
 3. `git merge upstream/main`
-4. If conflicts: report each conflict, show both sides, ask user for resolution strategy (ours/theirs/manual). After resolving: `git add <files> && git commit --no-edit`.
+4. If conflicts: list conflicted files from `git diff --name-only --diff-filter=U`. For each, show the conflict markers concisely — don't dump entire files. Ask user for resolution strategy (ours/theirs/manual). After resolving: `git add <files> && git commit --no-edit`.
 
 ## Phase 3: Verify
 
-1. `pnpm install` (upstream may have changed deps)
-2. `pnpm build && pnpm check`
-3. Ask user about `pnpm test`.
-4. Report pass/fail.
+1. Run `pnpm build && pnpm check` via a background **test-runner** agent. Continue only once it reports back.
+2. If build passes, ask user about `pnpm test`. Run via test-runner if requested.
+3. Report pass/fail.
 
 ## Phase 4: Push
 
