@@ -12,6 +12,7 @@ export const DELIVERABLE_CHANNEL_ORDER = [
   "telegram",
   "whatsapp",
   "discord",
+  "irc",
   "googlechat",
   "slack",
   "signal",
@@ -68,6 +69,16 @@ const CHAT_CHANNEL_META: Record<ChatChannelId, ChannelMeta> = {
     blurb: "very well supported right now.",
     systemImage: "bubble.left.and.bubble.right",
   },
+  irc: {
+    id: "irc",
+    label: "IRC",
+    selectionLabel: "IRC (Server + Nick)",
+    detailLabel: "IRC",
+    docsPath: "/channels/irc",
+    docsLabel: "irc",
+    blurb: "classic IRC networks with DM/channel routing and pairing controls.",
+    systemImage: "network",
+  },
   googlechat: {
     id: "googlechat",
     label: "Google Chat",
@@ -122,6 +133,7 @@ const CHAT_CHANNEL_META: Record<ChatChannelId, ChannelMeta> = {
 
 export const CHAT_CHANNEL_ALIASES: Record<string, ChatChannelId> = {
   imsg: "imessage",
+  "internet-relay-chat": "irc",
   "google-chat": "googlechat",
   gchat: "googlechat",
 };
