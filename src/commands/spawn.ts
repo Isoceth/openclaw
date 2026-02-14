@@ -2,12 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { RuntimeEnv } from "../runtime.js";
-import {
-  listAgentIds,
-  resolveAgentConfig,
-  resolveDefaultAgentId,
-  resolveAgentDir,
-} from "../agents/agent-scope.js";
+import { listAgentIds, resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { AGENT_LANE_SUBAGENT } from "../agents/lanes.js";
 import { buildSubagentSystemPrompt } from "../agents/subagent-announce.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
@@ -15,7 +10,7 @@ import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinkin
 import { formatCliCommand } from "../cli/command-format.js";
 import { loadConfig, type OpenClawConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
-import { resolveStorePath } from "../config/sessions/paths.js";
+import { resolveSessionTranscriptPath, resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store.js";
 import { callGateway } from "../gateway/call.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -220,45 +215,63 @@ async function waitForSpawnCompletion(params: {
   sessionKey: string;
   timeoutMs: number;
 }): Promise<WaitResult> {
-  const waitMs = Math.min(params.timeoutMs, 60_000);
+  // Poll in 60-second intervals until the agent finishes or the total timeout expires.
+  const pollMs = Math.min(params.timeoutMs, 60_000);
+  const deadline = Date.now() + params.timeoutMs;
 
-  // TODO Handle agent.wait RPC failure [tp3y]
-  // tags: error-handling, review:branch-feature-spawn-command
-  // If agent.wait RPC fails (gateway disconnected, runId not found), error
-  // propagates without context. User won't know if this is a transient network
-  // issue vs. the run never started. Should provide session key for recovery.
-  // ---
-  // Wait for the agent run to complete.
-  const wait = await callGateway<{
-    status?: string;
-    startedAt?: number;
-    endedAt?: number;
-    error?: string;
-  }>({
-    method: "agent.wait",
-    params: {
-      runId: params.runId,
-      timeoutMs: waitMs,
-    },
-    timeoutMs: waitMs + 2000,
-  });
+  let status: "ok" | "error" | "timeout" = "timeout";
+  let error: string | undefined;
+  let startedAt: number | undefined;
+  let endedAt: number | undefined;
 
-  const status =
-    wait?.status === "ok" || wait?.status === "error" || wait?.status === "timeout"
-      ? wait.status
-      : "error";
-  const error = typeof wait?.error === "string" ? wait.error : undefined;
-  const startedAt = typeof wait?.startedAt === "number" ? wait.startedAt : undefined;
-  const endedAt = typeof wait?.endedAt === "number" ? wait.endedAt : undefined;
+  while (Date.now() < deadline) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      break;
+    }
+    const thisWaitMs = Math.min(pollMs, remaining);
 
-  // TODO Handle chat.history RPC failure when retrieving response
-  // tags: error-handling, review:branch-feature-spawn-command
-  // If readLatestAssistantReply fails (chat.history RPC error), the error
-  // propagates without context. User won't know if the subagent completed but
-  // response retrieval failed, vs. the subagent itself failing.
-  // ---
+    // TODO Handle agent.wait RPC failure [tp3y]
+    // tags: error-handling, review:branch-feature-spawn-command
+    // If agent.wait RPC fails (gateway disconnected, runId not found), error
+    // propagates without context. User won't know if this is a transient network
+    // issue vs. the run never started. Should provide session key for recovery.
+    // ---
+    const wait = await callGateway<{
+      status?: string;
+      startedAt?: number;
+      endedAt?: number;
+      error?: string;
+    }>({
+      method: "agent.wait",
+      params: {
+        runId: params.runId,
+        timeoutMs: thisWaitMs,
+      },
+      timeoutMs: thisWaitMs + 2000,
+    });
+
+    const pollStatus =
+      wait?.status === "ok" || wait?.status === "error" || wait?.status === "timeout"
+        ? wait.status
+        : "error";
+
+    startedAt = typeof wait?.startedAt === "number" ? wait.startedAt : startedAt;
+    endedAt = typeof wait?.endedAt === "number" ? wait.endedAt : endedAt;
+    error = typeof wait?.error === "string" ? wait.error : error;
+
+    // Agent finished (success or failure) — stop polling.
+    if (pollStatus === "ok" || pollStatus === "error") {
+      status = pollStatus;
+      break;
+    }
+
+    // Poll returned "timeout" — the agent is still running. Loop and poll again
+    // unless we've exhausted the overall deadline.
+  }
+
   // If the wait completed successfully, retrieve the final response.
-  // Only read on success - during timeout the agent may still be processing.
+  // Only read on success — during timeout the agent may still be processing.
   let response: string | undefined;
   if (status === "ok") {
     const { readLatestAssistantReply } = await import("../agents/tools/agent-step.js");
@@ -272,12 +285,11 @@ async function waitForSpawnCompletion(params: {
  * buildTranscriptPath resolves the transcript path for a given session key.
  * Session key format: agent:${agentId}:spawn:${sessionId}
  */
-function buildTranscriptPath(sessionKey: string, cfg: OpenClawConfig): string {
+function buildTranscriptPath(sessionKey: string): string {
   const parts = sessionKey.split(":");
   const agentId = parts[1] || "default";
   const sessionId = parts[parts.length - 1];
-  const agentDir = resolveAgentDir(cfg, agentId);
-  return `${agentDir}/sessions/${sessionId}.jsonl`;
+  return resolveSessionTranscriptPath(sessionId, agentId);
 }
 
 // Stats formatting helpers (mirroring subagent-announce.ts formatting).
@@ -632,7 +644,7 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
     }
 
     // Build transcript path for error reporting.
-    const transcriptPath = buildTranscriptPath(sessionKey, cfg);
+    const transcriptPath = buildTranscriptPath(sessionKey);
 
     // Format output based on --json flag.
     if (opts.json) {
@@ -667,9 +679,9 @@ export async function spawnCommand(opts: SpawnCliOpts, runtime: RuntimeEnv): Pro
 
     // Handle timeout errors.
     if (result.status === "timeout") {
-      const durationMs =
-        result.endedAt && result.startedAt ? result.endedAt - result.startedAt : timeoutMs;
-      const durationSec = Math.round(durationMs / 1000);
+      // Use actual elapsed time, not the configured timeout.
+      const elapsedMs = endedAt - startedAt;
+      const durationSec = Math.round(elapsedMs / 1000);
 
       runtime.error("Error: Subagent timed out\n");
       runtime.error(`Session: ${sessionKey}`);
