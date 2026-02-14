@@ -12,7 +12,6 @@ You have been assigned specific conflicting files. For each file:
    - **Fork change area** (documented in CLAUDE.md): Preserve our changes. Integrate upstream additions only if they don't break our modifications.
    - **Non-fork area**: Prefer upstream's version. Keep our side only if it's a deliberate addition, not just a merge artefact.
    - **Both sides made substantive changes to the same code**: Escalate — message the orchestrator via SendMessage describing the conflict and both sides. The orchestrator decides; do not guess.
-4. `git add` the resolved file.
 
 ## When to escalate
 

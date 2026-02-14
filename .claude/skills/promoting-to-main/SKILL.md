@@ -23,7 +23,7 @@ ARGUMENTS: $ARGUMENTS
 
 ## 1. Pre-flight
 
-1. `git status` / `git branch --show-current` — stop if dirty or wrong branch.
+1. `git status` / `git branch --show-current` — stop if wrong branch. If dirty, offer the user a choice: **commit** (via `/committing`), **stash**, or **discard**.
 2. `git log origin/staging..staging --oneline` — push if unpushed commits exist.
 3. Verify worktree: `git worktree list` — should show `../openclaw-main` on `main`. If missing, create it: `git worktree add ../openclaw-main main`
 4. `git log --oneline main..staging` — present the commit list, ask user to confirm.
