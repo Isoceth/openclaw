@@ -269,22 +269,15 @@ export function resolveSessionDisplayName(
     return label;
   }
 
-  // Gateway-provided displayName is next.
-  const displayName = row?.displayName?.trim();
-  if (displayName) {
-    return displayName;
-  }
-
-  // Parse and generate a friendly name for agent: prefixed keys.
+  // For agent-prefixed keys, derive the name from session structure.
+  // This prevents gateway metadata pollution (group names, sender names)
+  // from overriding the stable agent name on main/spawn/subagent sessions.
   const parsed = parseSessionKeyParts(key);
   if (parsed) {
     const agentEntry = agents?.find((a) => a.id === parsed.agentId);
-    // Use the configured agent name if available; never fall back to the raw ID.
     const agentName = agentEntry?.name;
 
     if (parsed.sessionType === "main") {
-      // For main sessions, show the agent's configured name (e.g., "Hex").
-      // Only fall back to ID if no name is configured.
       return agentName || parsed.agentId;
     }
     if (parsed.sessionType === "spawn") {
@@ -295,7 +288,14 @@ export function resolveSessionDisplayName(
       const shortId = parsed.rest?.slice(0, 8) || "?";
       return agentName ? `${agentName} Subagent ${shortId}` : `Subagent ${shortId}`;
     }
-    // Channel sessions: leave as-is for now, the channel name should come from displayName.
+    // Channel sessions fall through to gateway displayName below.
+  }
+
+  // Gateway-provided displayName — for channel/group sessions and
+  // non-agent-prefixed keys where a friendly name exists.
+  const displayName = row?.displayName?.trim();
+  if (displayName) {
+    return displayName;
   }
 
   // Fallback to the raw key.

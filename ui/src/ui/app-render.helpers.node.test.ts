@@ -8,72 +8,106 @@ function row(overrides: Partial<SessionRow> & { key: string }): SessionRow {
   return { kind: "direct", updatedAt: 0, ...overrides };
 }
 
+const agents = [{ id: "main", name: "Hex" }];
+
 describe("resolveSessionDisplayName", () => {
-  it("returns key when no row is provided", () => {
-    expect(resolveSessionDisplayName("agent:main:main")).toBe("agent:main:main");
+  describe("main sessions", () => {
+    it("returns agent name from agents list", () => {
+      expect(
+        resolveSessionDisplayName("agent:main:main", row({ key: "agent:main:main" }), agents),
+      ).toBe("Hex");
+    });
+
+    it("falls back to agent ID when agents list is absent", () => {
+      expect(resolveSessionDisplayName("agent:main:main")).toBe("main");
+    });
+
+    it("falls back to agent ID when agent is not in list", () => {
+      expect(
+        resolveSessionDisplayName("agent:other:main", row({ key: "agent:other:main" }), agents),
+      ).toBe("other");
+    });
+
+    it("ignores gateway displayName — structural name wins", () => {
+      expect(
+        resolveSessionDisplayName(
+          "agent:main:main",
+          row({ key: "agent:main:main", displayName: "telegram:g-abc123" }),
+          agents,
+        ),
+      ).toBe("Hex");
+    });
+
+    it("user label still takes priority over agent name", () => {
+      expect(
+        resolveSessionDisplayName(
+          "agent:main:main",
+          row({ key: "agent:main:main", label: "My Bot", displayName: "telegram:g-abc123" }),
+          agents,
+        ),
+      ).toBe("My Bot");
+    });
   });
 
-  it("returns key when row has no label or displayName", () => {
-    expect(resolveSessionDisplayName("agent:main:main", row({ key: "agent:main:main" }))).toBe(
-      "agent:main:main",
-    );
-  });
+  describe("non-agent keys", () => {
+    it("uses gateway displayName", () => {
+      expect(
+        resolveSessionDisplayName(
+          "discord:123:456",
+          row({ key: "discord:123:456", displayName: "My Chat" }),
+        ),
+      ).toBe("My Chat");
+    });
 
-  it("returns key when displayName matches key", () => {
-    expect(resolveSessionDisplayName("mykey", row({ key: "mykey", displayName: "mykey" }))).toBe(
-      "mykey",
-    );
-  });
+    it("returns label when set", () => {
+      expect(
+        resolveSessionDisplayName(
+          "discord:123:456",
+          row({ key: "discord:123:456", label: "General" }),
+        ),
+      ).toBe("General");
+    });
 
-  it("returns key when label matches key", () => {
-    expect(resolveSessionDisplayName("mykey", row({ key: "mykey", label: "mykey" }))).toBe("mykey");
-  });
+    it("prefers label over displayName", () => {
+      expect(
+        resolveSessionDisplayName(
+          "discord:123:456",
+          row({ key: "discord:123:456", displayName: "My Chat", label: "General" }),
+        ),
+      ).toBe("General");
+    });
 
-  it("uses displayName prominently when available", () => {
-    expect(
-      resolveSessionDisplayName(
+    it("falls back to raw key when no metadata", () => {
+      expect(resolveSessionDisplayName("discord:123:456", row({ key: "discord:123:456" }))).toBe(
         "discord:123:456",
-        row({ key: "discord:123:456", displayName: "My Chat" }),
-      ),
-    ).toBe("My Chat (discord:123:456)");
+      );
+    });
+
+    it("falls back to raw key when no row is provided", () => {
+      expect(resolveSessionDisplayName("mykey")).toBe("mykey");
+    });
   });
 
-  it("falls back to label when displayName is absent", () => {
-    expect(
-      resolveSessionDisplayName(
-        "discord:123:456",
-        row({ key: "discord:123:456", label: "General" }),
-      ),
-    ).toBe("General (discord:123:456)");
-  });
+  describe("whitespace handling", () => {
+    it("ignores whitespace-only displayName", () => {
+      expect(
+        resolveSessionDisplayName(
+          "discord:123:456",
+          row({ key: "discord:123:456", displayName: "   " }),
+        ),
+      ).toBe("discord:123:456");
+    });
 
-  it("prefers displayName over label when both are present", () => {
-    expect(
-      resolveSessionDisplayName(
-        "discord:123:456",
-        row({ key: "discord:123:456", displayName: "My Chat", label: "General" }),
-      ),
-    ).toBe("My Chat (discord:123:456)");
-  });
+    it("ignores whitespace-only label", () => {
+      expect(
+        resolveSessionDisplayName("discord:123:456", row({ key: "discord:123:456", label: "   " })),
+      ).toBe("discord:123:456");
+    });
 
-  it("ignores whitespace-only displayName", () => {
-    expect(
-      resolveSessionDisplayName(
-        "discord:123:456",
-        row({ key: "discord:123:456", displayName: "   ", label: "General" }),
-      ),
-    ).toBe("General (discord:123:456)");
-  });
-
-  it("ignores whitespace-only label", () => {
-    expect(
-      resolveSessionDisplayName("discord:123:456", row({ key: "discord:123:456", label: "   " })),
-    ).toBe("discord:123:456");
-  });
-
-  it("trims displayName and label", () => {
-    expect(resolveSessionDisplayName("k", row({ key: "k", displayName: "  My Chat  " }))).toBe(
-      "My Chat (k)",
-    );
+    it("trims displayName", () => {
+      expect(
+        resolveSessionDisplayName("mykey", row({ key: "mykey", displayName: "  My Chat  " })),
+      ).toBe("My Chat");
+    });
   });
 });
