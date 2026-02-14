@@ -295,6 +295,7 @@ public struct Snapshot: Codable, Sendable {
     public let configpath: String?
     public let statedir: String?
     public let sessiondefaults: [String: AnyCodable]?
+    public let authmode: AnyCodable?
 
     public init(
         presence: [PresenceEntry],
@@ -303,7 +304,8 @@ public struct Snapshot: Codable, Sendable {
         uptimems: Int,
         configpath: String?,
         statedir: String?,
-        sessiondefaults: [String: AnyCodable]?
+        sessiondefaults: [String: AnyCodable]?,
+        authmode: AnyCodable?
     ) {
         self.presence = presence
         self.health = health
@@ -312,6 +314,7 @@ public struct Snapshot: Codable, Sendable {
         self.configpath = configpath
         self.statedir = statedir
         self.sessiondefaults = sessiondefaults
+        self.authmode = authmode
     }
     private enum CodingKeys: String, CodingKey {
         case presence
@@ -321,6 +324,7 @@ public struct Snapshot: Codable, Sendable {
         case configpath = "configPath"
         case statedir = "stateDir"
         case sessiondefaults = "sessionDefaults"
+        case authmode = "authMode"
     }
 }
 
@@ -489,6 +493,7 @@ public struct AgentParams: Codable, Sendable {
     public let timeout: Int?
     public let lane: String?
     public let extrasystemprompt: String?
+    public let inputprovenance: [String: AnyCodable]?
     public let idempotencykey: String
     public let label: String?
     public let spawnedby: String?
@@ -514,6 +519,7 @@ public struct AgentParams: Codable, Sendable {
         timeout: Int?,
         lane: String?,
         extrasystemprompt: String?,
+        inputprovenance: [String: AnyCodable]?,
         idempotencykey: String,
         label: String?,
         spawnedby: String?
@@ -538,6 +544,7 @@ public struct AgentParams: Codable, Sendable {
         self.timeout = timeout
         self.lane = lane
         self.extrasystemprompt = extrasystemprompt
+        self.inputprovenance = inputprovenance
         self.idempotencykey = idempotencykey
         self.label = label
         self.spawnedby = spawnedby
@@ -563,6 +570,7 @@ public struct AgentParams: Codable, Sendable {
         case timeout
         case lane
         case extrasystemprompt = "extraSystemPrompt"
+        case inputprovenance = "inputProvenance"
         case idempotencykey = "idempotencyKey"
         case label
         case spawnedby = "spawnedBy"
@@ -1445,6 +1453,32 @@ public struct TalkModeParams: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case enabled
         case phase
+    }
+}
+
+public struct TalkConfigParams: Codable, Sendable {
+    public let includesecrets: Bool?
+
+    public init(
+        includesecrets: Bool?
+    ) {
+        self.includesecrets = includesecrets
+    }
+    private enum CodingKeys: String, CodingKey {
+        case includesecrets = "includeSecrets"
+    }
+}
+
+public struct TalkConfigResult: Codable, Sendable {
+    public let config: [String: AnyCodable]
+
+    public init(
+        config: [String: AnyCodable]
+    ) {
+        self.config = config
+    }
+    private enum CodingKeys: String, CodingKey {
+        case config
     }
 }
 
@@ -2350,6 +2384,7 @@ public struct ExecApprovalRequestParams: Codable, Sendable {
     public let resolvedpath: AnyCodable?
     public let sessionkey: AnyCodable?
     public let timeoutms: Int?
+    public let twophase: Bool?
 
     public init(
         id: String?,
@@ -2361,7 +2396,8 @@ public struct ExecApprovalRequestParams: Codable, Sendable {
         agentid: AnyCodable?,
         resolvedpath: AnyCodable?,
         sessionkey: AnyCodable?,
-        timeoutms: Int?
+        timeoutms: Int?,
+        twophase: Bool?
     ) {
         self.id = id
         self.command = command
@@ -2373,6 +2409,7 @@ public struct ExecApprovalRequestParams: Codable, Sendable {
         self.resolvedpath = resolvedpath
         self.sessionkey = sessionkey
         self.timeoutms = timeoutms
+        self.twophase = twophase
     }
     private enum CodingKeys: String, CodingKey {
         case id
@@ -2385,6 +2422,7 @@ public struct ExecApprovalRequestParams: Codable, Sendable {
         case resolvedpath = "resolvedPath"
         case sessionkey = "sessionKey"
         case timeoutms = "timeoutMs"
+        case twophase = "twoPhase"
     }
 }
 

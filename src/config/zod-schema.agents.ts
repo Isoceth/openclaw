@@ -41,6 +41,7 @@ export const BindingsSchema = z
               .regex(/^[a-z0-9-]+$/)
               .max(64)
               .optional(),
+            roles: z.array(z.string()).optional(),
           })
           .strict(),
       })

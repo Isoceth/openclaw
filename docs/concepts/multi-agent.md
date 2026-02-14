@@ -125,13 +125,16 @@ Notes:
 Bindings are **deterministic** and **most-specific wins**:
 
 1. `peer` match (exact DM/group/channel id)
-2. `peer.parent` match (threads inherit binding from parent channel/group when no direct match)
-3. `guildId` (Discord)
-4. `teamId` (Slack)
-5. `workspaceId` (webchat)
-6. `accountId` match for a channel
-7. channel-level match (`accountId: "*"`)
-8. fallback to default agent (`agents.list[].default`, else first list entry, default: `main`)
+2. `parentPeer` match (thread inheritance)
+3. `guildId + roles` (Discord role routing)
+4. `guildId` (Discord)
+5. `teamId` (Slack)
+6. `workspaceId` (webchat)
+7. `accountId` match for a channel
+8. channel-level match (`accountId: "*"`)
+9. fallback to default agent (`agents.list[].default`, else first list entry, default: `main`)
+
+If a binding sets multiple match fields (for example `peer` + `guildId`), all specified fields are required (`AND` semantics).
 
 ## Multiple accounts / phone numbers
 

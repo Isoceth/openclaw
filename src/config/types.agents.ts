@@ -80,5 +80,7 @@ export type AgentBinding = {
     guildId?: string;
     teamId?: string;
     workspaceId?: string;
+    /** Discord role IDs used for role-based routing. */
+    roles?: string[];
   };
 };
