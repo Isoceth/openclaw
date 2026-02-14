@@ -236,6 +236,7 @@ function normalizeBindingMatch(
         peer?: { kind?: string; id?: string } | undefined;
         guildId?: string | undefined;
         teamId?: string | undefined;
+        workspaceId?: string | undefined;
         roles?: string[] | undefined;
       }
     | undefined,
