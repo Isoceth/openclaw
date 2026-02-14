@@ -32,16 +32,21 @@ List conflicting files: `git diff --name-only --diff-filter=U`
 
 **Delegate to sonnet teammates.** Do not resolve conflicts yourself — the orchestrator assesses and delegates.
 
-### Set up the team
+### Create Tasks
 
-1. Use TeamCreate to create a team (e.g., `merge-upstream`).
-2. Create tasks with TaskCreate — one per batch of files (3–5 files per task).
-3. Spawn teammates using the Task tool with `model: "sonnet"`, `subagent_type: "general-purpose"`, and `team_name` set to the team name. Give each teammate a name (e.g., `resolver-1`, `resolver-2`).
-4. Assign tasks to teammates with TaskUpdate.
+Create tasks with `TaskCreate` — one per batch of files (3–5 files per task). Include absolute paths of the conflicting files in each task description.
 
-### Teammate prompts
+### Invoke /team-dispatch
 
-Each teammate prompt: "Read `.claude/skills/merge-upstream/references/resolver-instructions.md` for your instructions. Your files: `<absolute paths>`"
+Invoke `/team-dispatch` for team setup, monitoring, and cleanup.
+
+Unique requirements — override team-dispatch defaults:
+
+- **No worktrees.** Conflicts exist in the main working directory with merge markers. Teammates edit files in place.
+- **No rebase merge-back.** There are no individual branches to merge — teammates resolve conflict markers directly.
+- **No git operations by teammates.** Teammates only edit files — no `git add`, no `git commit`. The orchestrator stages resolved files after each task completes: `git add <files>`.
+- Append [references/resolver-instructions.md](references/resolver-instructions.md) to teammate prompts (after team-dispatch's base protocol).
+- All conflict resolution → sonnet teammates.
 
 ### Handle escalations
 
@@ -49,9 +54,7 @@ When a teammate escalates, make the decision and reply via SendMessage. Only esc
 
 ### Finalise
 
-After all teammates complete, shut them down via SendMessage (`type: "shutdown_request"`) and clean up with TeamDelete.
-
-Verify nothing remains: `git diff --name-only --diff-filter=U`
+After team-dispatch completes, verify nothing remains: `git diff --name-only --diff-filter=U`
 
 If clean: `git commit --no-edit`
 
