@@ -11,6 +11,7 @@ import {
 } from "../chat/grouped-render.ts";
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
 import { icons } from "../icons.ts";
+import { detectTextDirection } from "../text-direction.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
@@ -375,6 +376,7 @@ export function renderChat(props: ChatProps) {
             <textarea
               ${ref((el) => el && adjustTextareaHeight(el as HTMLTextAreaElement))}
               .value=${props.draft}
+              dir=${detectTextDirection(props.draft)}
               ?disabled=${!props.connected}
               @keydown=${(e: KeyboardEvent) => {
                 if (e.key !== "Enter") {
@@ -512,11 +514,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
       message: msg,
     });
   }
-  if (props.stream !== null) {
-    // During streaming: render tool cards from the tool stream as individual
-    // bubbles, then the current text as the final streaming bubble.
-    // The gateway sends tool events on a separate stream (not in chat deltas),
-    // so we pull tool cards from toolMessages rather than streamContent.
+  if (props.showThinking) {
     for (let i = 0; i < tools.length; i++) {
       items.push({
         kind: "message",
@@ -524,26 +522,19 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
         message: tools[i],
       });
     }
+  }
 
-    const streamKey = `stream:${props.sessionKey}:${props.streamStartedAt ?? "live"}`;
+  if (props.stream !== null) {
+    const key = `stream:${props.sessionKey}:${props.streamStartedAt ?? "live"}`;
     if (props.stream.trim().length > 0) {
       items.push({
         kind: "stream",
-        key: streamKey,
+        key,
         text: props.stream,
         startedAt: props.streamStartedAt ?? Date.now(),
       });
     } else {
-      items.push({ kind: "reading-indicator", key: streamKey });
-    }
-  } else if (props.showThinking) {
-    // Not streaming: show tool messages only when showThinking is enabled.
-    for (let i = 0; i < tools.length; i++) {
-      items.push({
-        kind: "message",
-        key: messageKey(tools[i], i + history.length),
-        message: tools[i],
-      });
+      items.push({ kind: "reading-indicator", key });
     }
   }
 
