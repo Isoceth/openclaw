@@ -45,12 +45,13 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
       if (!target) {
         return;
       }
-      const _distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
 
       // force=true only overrides when we haven't auto-scrolled yet (initial load).
       // After initial load, respect the user's scroll position.
       const effectiveForce = force && !host.chatHasAutoScrolled;
-      const shouldStick = effectiveForce || host.chatUserNearBottom;
+      const shouldStick =
+        effectiveForce || host.chatUserNearBottom || distanceFromBottom < NEAR_BOTTOM_THRESHOLD;
 
       if (!shouldStick) {
         // User is scrolled up — flag that new content arrived below.
@@ -80,9 +81,12 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
         if (!latest) {
           return;
         }
-        const _latestDistanceFromBottom =
+        const latestDistanceFromBottom =
           latest.scrollHeight - latest.scrollTop - latest.clientHeight;
-        const shouldStickRetry = effectiveForce || host.chatUserNearBottom;
+        const shouldStickRetry =
+          effectiveForce ||
+          host.chatUserNearBottom ||
+          latestDistanceFromBottom < NEAR_BOTTOM_THRESHOLD;
         if (!shouldStickRetry) {
           return;
         }
