@@ -16,7 +16,7 @@ export const BindingsSchema = z
     z
       .object({
         agentId: z.string(),
-        label: z.string().optional(),
+        comment: z.string().optional(),
         match: z
           .object({
             channel: z.string(),
