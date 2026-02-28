@@ -41,6 +41,7 @@ export type AgentsConfig = {
 
 export type AgentBinding = {
   agentId: string;
+  label?: string;
   comment?: string;
   match: {
     channel: string;

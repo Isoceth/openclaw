@@ -167,7 +167,7 @@ const coreEntries: CoreCliEntry[] = [
     },
   },
   {
-    commands: [{ name: "spawn", description: "Spawn a subagent" }],
+    commands: [{ name: "spawn", description: "Spawn a subagent", hasSubcommands: false }],
     register: async ({ program }) => {
       const mod = await import("./register.spawn.js");
       mod.registerSpawnCommand(program);
