@@ -1,15 +1,51 @@
 import { html } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import type { AppViewState } from "./app-view-state.ts";
-import type { ThemeTransitionContext } from "./theme-transition.ts";
-import type { ThemeMode } from "./theme.ts";
-import type { SessionsListResult } from "./types.ts";
+import { t } from "../i18n/index.ts";
 import { refreshChat } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
+import type { AppViewState } from "./app-view-state.ts";
 import { OpenClawApp } from "./app.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
+import type { ThemeTransitionContext } from "./theme-transition.ts";
+import type { ThemeMode } from "./theme.ts";
+import type { SessionsListResult } from "./types.ts";
+
+type SessionDefaultsSnapshot = {
+  mainSessionKey?: string;
+  mainKey?: string;
+};
+
+function resolveSidebarChatSessionKey(state: AppViewState): string {
+  const snapshot = state.hello?.snapshot as
+    | { sessionDefaults?: SessionDefaultsSnapshot }
+    | undefined;
+  const mainSessionKey = snapshot?.sessionDefaults?.mainSessionKey?.trim();
+  if (mainSessionKey) {
+    return mainSessionKey;
+  }
+  const mainKey = snapshot?.sessionDefaults?.mainKey?.trim();
+  if (mainKey) {
+    return mainKey;
+  }
+  return "main";
+}
+
+function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string) {
+  state.sessionKey = sessionKey;
+  state.chatMessage = "";
+  state.chatStream = null;
+  (state as unknown as OpenClawApp).chatStreamStartedAt = null;
+  state.chatRunId = null;
+  (state as unknown as OpenClawApp).resetToolStream();
+  (state as unknown as OpenClawApp).resetChatScroll();
+  state.applySettings({
+    ...state.settings,
+    sessionKey,
+    lastActiveSessionKey: sessionKey,
+  });
+}
 
 export function renderTab(state: AppViewState, tab: Tab) {
   const href = pathForTab(tab, state.basePath);
@@ -29,6 +65,13 @@ export function renderTab(state: AppViewState, tab: Tab) {
           return;
         }
         event.preventDefault();
+        if (tab === "chat") {
+          const mainSessionKey = resolveSidebarChatSessionKey(state);
+          if (state.sessionKey !== mainSessionKey) {
+            resetChatStateForSessionSwitch(state, mainSessionKey);
+            void state.loadAssistantIdentity();
+          }
+        }
         state.setTab(tab);
       }}
       title=${titleForTab(tab)}
@@ -118,7 +161,7 @@ export function renderChatControls(state: AppViewState) {
             sessionOptions,
             (entry) => entry.key,
             (entry) =>
-              html`<option value=${entry.key}>
+              html`<option value=${entry.key} title=${entry.key}>
                 ${entry.displayName ?? entry.key}
               </option>`,
           )}
@@ -145,7 +188,7 @@ export function renderChatControls(state: AppViewState) {
             });
           }
         }}
-        title="Refresh chat data"
+        title=${t("chat.refreshTitle")}
       >
         ${refreshIcon}
       </button>
@@ -163,11 +206,7 @@ export function renderChatControls(state: AppViewState) {
           });
         }}
         aria-pressed=${showThinking}
-        title=${
-          disableThinkingToggle
-            ? "Disabled during onboarding"
-            : "Toggle assistant thinking/working output"
-        }
+        title=${disableThinkingToggle ? t("chat.onboardingDisabled") : t("chat.thinkingToggle")}
       >
         ${icons.brain}
       </button>
@@ -184,22 +223,13 @@ export function renderChatControls(state: AppViewState) {
           });
         }}
         aria-pressed=${focusActive}
-        title=${
-          disableFocusToggle
-            ? "Disabled during onboarding"
-            : "Toggle focus mode (hide sidebar + page header)"
-        }
+        title=${disableFocusToggle ? t("chat.onboardingDisabled") : t("chat.focusToggle")}
       >
         ${focusIcon}
       </button>
     </div>
   `;
 }
-
-type SessionDefaultsSnapshot = {
-  mainSessionKey?: string;
-  mainKey?: string;
-};
 
 function resolveMainSessionKey(
   hello: AppViewState["hello"],
@@ -222,84 +252,122 @@ function resolveMainSessionKey(
 
 type AgentLookup = { id: string; name?: string }[];
 
-/**
- * Parses an agent session key into its components.
- * Format: agent:<agentId>:<rest> where rest can be:
- * - "main" or mainKey for main sessions
- * - "spawn:<uuid>" for CLI spawn sessions
- * - "subagent:<uuid>" for agent-spawned subagents
- * - "<channel>:<type>:<id>" for channel groups/direct
- */
-function parseSessionKeyParts(key: string): {
-  agentId?: string;
-  sessionType?: "main" | "spawn" | "subagent" | "channel";
-  rest?: string;
-} | null {
-  if (!key.startsWith("agent:")) {
-    return null;
-  }
-  const parts = key.slice(6).split(":");
-  if (parts.length < 2) {
-    return null;
-  }
-  const agentId = parts[0];
-  const typeOrKey = parts[1];
+/* ── Channel display labels ────────────────────────────── */
+const CHANNEL_LABELS: Record<string, string> = {
+  bluebubbles: "iMessage",
+  telegram: "Telegram",
+  discord: "Discord",
+  signal: "Signal",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
+  matrix: "Matrix",
+  email: "Email",
+  sms: "SMS",
+};
 
-  if (typeOrKey === "main" || parts.length === 2) {
-    return { agentId, sessionType: "main", rest: typeOrKey };
+const KNOWN_CHANNEL_KEYS = Object.keys(CHANNEL_LABELS);
+
+/** Parsed type / context extracted from a session key. */
+export type SessionKeyInfo = {
+  /** Prefix for typed sessions (Subagent:/Cron:/Spawn:). Empty for others. */
+  prefix: string;
+  /** Human-readable fallback when no label / displayName is available. */
+  fallbackName: string;
+};
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Parse a session key to extract type information and a human-readable
+ * fallback display name.  Exported for testing.
+ */
+export function parseSessionKey(key: string): SessionKeyInfo {
+  // ── Main session ─────────────────────────────────
+  if (key === "main" || key === "agent:main:main") {
+    return { prefix: "", fallbackName: "Main Session" };
   }
-  if (typeOrKey === "spawn" && parts.length >= 3) {
-    return { agentId, sessionType: "spawn", rest: parts.slice(2).join(":") };
+
+  // ── CLI spawn session (our fork: CLI subagent command) ──
+  if (key.includes(":spawn:")) {
+    return { prefix: "Spawn:", fallbackName: "Spawn:" };
   }
-  if (typeOrKey === "subagent" && parts.length >= 3) {
-    return { agentId, sessionType: "subagent", rest: parts.slice(2).join(":") };
+
+  // ── Subagent ─────────────────────────────────────
+  if (key.includes(":subagent:")) {
+    return { prefix: "Subagent:", fallbackName: "Subagent:" };
   }
-  // Channel format: agent:<agentId>:<channel>:<type>:<id>
-  return { agentId, sessionType: "channel", rest: parts.slice(1).join(":") };
+
+  // ── Cron job ─────────────────────────────────────
+  if (key.includes(":cron:")) {
+    return { prefix: "Cron:", fallbackName: "Cron Job:" };
+  }
+
+  // ── Direct chat  (agent:<x>:<channel>:direct:<id>) ──
+  const directMatch = key.match(/^agent:[^:]+:([^:]+):direct:(.+)$/);
+  if (directMatch) {
+    const channel = directMatch[1];
+    const identifier = directMatch[2];
+    const channelLabel = CHANNEL_LABELS[channel] ?? capitalize(channel);
+    return { prefix: "", fallbackName: `${channelLabel} · ${identifier}` };
+  }
+
+  // ── Group chat  (agent:<x>:<channel>:group:<id>) ────
+  const groupMatch = key.match(/^agent:[^:]+:([^:]+):group:(.+)$/);
+  if (groupMatch) {
+    const channel = groupMatch[1];
+    const channelLabel = CHANNEL_LABELS[channel] ?? capitalize(channel);
+    return { prefix: "", fallbackName: `${channelLabel} Group` };
+  }
+
+  // ── Channel-prefixed legacy keys (e.g. "bluebubbles:g-…") ──
+  for (const ch of KNOWN_CHANNEL_KEYS) {
+    if (key === ch || key.startsWith(`${ch}:`)) {
+      return { prefix: "", fallbackName: `${CHANNEL_LABELS[ch]} Session` };
+    }
+  }
+
+  // ── Unknown — return key as-is ───────────────────
+  return { prefix: "", fallbackName: key };
 }
 
 export function resolveSessionDisplayName(
   key: string,
   row?: SessionsListResult["sessions"][number],
   agents?: AgentLookup,
-) {
-  // Explicit label takes priority, but don't append the full key.
-  const label = row?.label?.trim();
-  if (label) {
-    return label;
-  }
+): string {
+  const label = row?.label?.trim() || "";
+  const displayName = row?.displayName?.trim() || "";
+  const { prefix, fallbackName } = parseSessionKey(key);
 
-  // For agent-prefixed keys, derive the name from session structure.
-  // This prevents gateway metadata pollution (group names, sender names)
-  // from overriding the stable agent name on main/spawn/subagent sessions.
-  const parsed = parseSessionKeyParts(key);
-  if (parsed) {
-    const agentEntry = agents?.find((a) => a.id === parsed.agentId);
-    const agentName = agentEntry?.name;
-
-    if (parsed.sessionType === "main") {
-      return agentName || parsed.agentId;
+  // For main agent sessions, use the agent name from the agents list as the
+  // fallback — this prevents gateway metadata pollution while showing the
+  // agent's configured name (e.g. "Hex") rather than a generic "Main Session".
+  const resolvedFallback = (() => {
+    if (fallbackName === "Main Session" && key.startsWith("agent:")) {
+      const agentId = key.slice(6).split(":")[0];
+      const agentEntry = agents?.find((a) => a.id === agentId);
+      return agentEntry?.name || fallbackName;
     }
-    if (parsed.sessionType === "spawn") {
-      const shortId = parsed.rest?.slice(0, 8) || "?";
-      return agentName ? `${agentName} Spawn ${shortId}` : `Spawn ${shortId}`;
-    }
-    if (parsed.sessionType === "subagent") {
-      const shortId = parsed.rest?.slice(0, 8) || "?";
-      return agentName ? `${agentName} Subagent ${shortId}` : `Subagent ${shortId}`;
-    }
-    // Channel sessions fall through to gateway displayName below.
-  }
+    return fallbackName;
+  })();
 
-  // Gateway-provided displayName — for channel/group sessions and
-  // non-agent-prefixed keys where a friendly name exists.
-  const displayName = row?.displayName?.trim();
-  if (displayName) {
-    return displayName;
-  }
+  const applyTypedPrefix = (name: string): string => {
+    if (!prefix) {
+      return name;
+    }
+    const prefixPattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i");
+    return prefixPattern.test(name) ? name : `${prefix} ${name}`;
+  };
 
-  // Fallback to the raw key.
-  return key;
+  if (label && label !== key) {
+    return applyTypedPrefix(label);
+  }
+  if (displayName && displayName !== key) {
+    return applyTypedPrefix(displayName);
+  }
+  return resolvedFallback;
 }
 
 function resolveSessionOptions(
