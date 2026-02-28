@@ -1,7 +1,5 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import type { SessionEntry } from "../config/sessions/types.js";
-import type { RuntimeEnv } from "../runtime.js";
 import { listAgentIds, resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { AGENT_LANE_SUBAGENT } from "../agents/lanes.js";
 import { buildSubagentSystemPrompt } from "../agents/subagent-announce.js";
@@ -12,8 +10,10 @@ import { loadConfig, type OpenClawConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { resolveSessionTranscriptPath, resolveStorePath } from "../config/sessions/paths.js";
 import { loadSessionStore } from "../config/sessions/store.js";
+import type { SessionEntry } from "../config/sessions/types.js";
 import { callGateway } from "../gateway/call.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { deliveryContextFromSession } from "../utils/delivery-context.js";
 
 // SpawnCliOpts defines all CLI options for the spawn command.
